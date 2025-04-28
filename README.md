@@ -4,7 +4,7 @@
 
 > Self-sovereign Bitaxe firmware builder & flasher.
 
-+![Bitaxe Firmware Build and Flash Process](img/BUILD_AND_FLASH.gif)
+![Bitaxe Firmware Build and Flash Process](img/BUILD_AND_FLASH.gif)
 
 ## TL;DR Quick-Start
 
@@ -23,6 +23,7 @@ Navigate to http://localhost:9090 and follow the on-screen steps to build or fla
 * 100 % reproducible builds from upstream ESP-Miner sources
 * One-click flashing over LAN
 * Cancelable builds, progress bar, realtime logs
+* More but I'm not yet done with the docs ;-)
 
 ## Test cases
 
@@ -51,13 +52,13 @@ The "gold standard" is **reproducible builds**, where identical source code and 
 
 See detailed instructions in [docs/USAGE.md](docs/USAGE.md).
 
-+### Build Process
-+
-+![NomadBuild Build Screen](img/BUILD.jpg)
-+
-+### Flashing Firmware
-+
-+![NomadBuild Flash Screen](img/FLASH.jpg)
+### Build Process
+
+![NomadBuild Build Screen](img/BUILD.jpg)
+
+### Flashing Firmware
+
+![NomadBuild Flash Screen](img/FLASH.jpg)
 
 ## Build Process Details
 
