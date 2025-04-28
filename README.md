@@ -1,10 +1,18 @@
 # NomadBuild
 
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-MIT-green) MIT © 2025 marsmensch
 
-> Self-sovereign Bitaxe firmware builder & flasher.
+> NOMADBUILD - Self-sovereign Bitaxe firmware builder & flasher.
 
-![Bitaxe Firmware Build and Flash Process](img/BUILD_AND_FLASH.gif)
+## Building Trust in Open Source Hardware
+
+The Bitaxe project offers fantastic open-source hardware, but how can you be sure the firmware running on your device truly matches the public source code? Relying solely on pre-compiled binaries introduces trust assumptions about the build process and distribution channel.
+
+**Self-sovereign building** empowers users by allowing them to compile the firmware directly from the official source code within a controlled environment. This tool aims to make that process accessible.
+
+The "gold standard" is **reproducible builds**, where identical source code and build environments produce byte-for-byte identical binaries. While perfectly matching official release binaries is difficult due to subtle environment variations, this tool focuses on ensuring **internally reproducible builds** within its controlled Docker environment, providing high confidence in the generated firmware's integrity relative to the chosen source tag.
+
+*(See [docs/INTRODUCTION.md](docs/INTRODUCTION.md) for a more detailed discussion on the importance of self-sovereign and reproducible builds.)*
 
 ## TL;DR Quick-Start
 
@@ -17,6 +25,23 @@
 ```
 
 Navigate to http://localhost:9090 and follow the on-screen steps to build or flash your Bitaxe firmware.
+
+## Usage
+
+See detailed instructions in [docs/USAGE.md](docs/USAGE.md).
+
+### Build Process
+
+![NomadBuild Build Screen](img/BUILD.jpg)
+
+### Flashing Firmware
+
+![NomadBuild Flash Screen](img/FLASH.jpg)
+
+### Build & Flash flow
+
+![Bitaxe Firmware Build and Flash Process](img/BUILD_AND_FLASH.gif)
+
 
 ## Features
 
@@ -33,32 +58,6 @@ Navigate to http://localhost:9090 and follow the on-screen steps to build or fla
 ```
 
 See `docs/TESTING.md` for detailed guidance.
-
-## License
-
-MIT © 2025 marsmensch
-
-## Motivation: Building Trust in Open Source Hardware
-
-The Bitaxe project offers fantastic open-source hardware, but how can you be sure the firmware running on your device truly matches the public source code? Relying solely on pre-compiled binaries introduces trust assumptions about the build process and distribution channel.
-
-**Self-sovereign building** empowers users by allowing them to compile the firmware directly from the official source code within a controlled environment. This tool aims to make that process accessible.
-
-The "gold standard" is **reproducible builds**, where identical source code and build environments produce byte-for-byte identical binaries. While perfectly matching official release binaries is difficult due to subtle environment variations, this tool focuses on ensuring **internally reproducible builds** within its controlled Docker environment, providing high confidence in the generated firmware's integrity relative to the chosen source tag.
-
-*(See [docs/INTRODUCTION.md](docs/INTRODUCTION.md) for a more detailed discussion on the importance of self-sovereign and reproducible builds.)*
-
-## Usage
-
-See detailed instructions in [docs/USAGE.md](docs/USAGE.md).
-
-### Build Process
-
-![NomadBuild Build Screen](img/BUILD.jpg)
-
-### Flashing Firmware
-
-![NomadBuild Flash Screen](img/FLASH.jpg)
 
 ## Build Process Details
 
