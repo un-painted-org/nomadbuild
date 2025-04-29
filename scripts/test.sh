@@ -96,9 +96,9 @@ echo "Test path: $TEST_PATH"
 
 # Pytest and dependencies are installed globally via Dockerfile
 # Clear .pyc files and run pytest targeting the correct directory with ESP-IDF environment
-CMD_INSIDE_CONTAINER="source \$IDF_PATH/export.sh > /dev/null 2>&1 && export PYTHONDONTWRITEBYTECODE=1 && find /app -name '*.pyc' -delete \
+CMD_INSIDE_CONTAINER="source \$IDF_PATH/export.sh > /dev/null 2>&1 && source /opt/venv/bin/activate && export PYTHONDONTWRITEBYTECODE=1 && find /app -name '*.pyc' -delete \
     && python3 -m pip install -q pytest-sugar \
-    && python3 -B -m pytest -q --disable-warnings --tb=short --durations=10 --color=yes --cache-clear $TEST_PATH"
+    && /opt/venv/bin/python -B -m pytest -q --disable-warnings --tb=short --durations=10 --color=yes --cache-clear $TEST_PATH"
 
 # Run the Docker container with bash entrypoint
 # Mount the current directory to /app to ensure tests run against local code
