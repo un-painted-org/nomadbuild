@@ -143,3 +143,4 @@ ESP-Miner/
 *.old
 .benchmarks/ 
 archive/     # ignore archived scripts and resources
+.cursor/     # ignore cursor-related temporary files
