@@ -1,8 +1,10 @@
 # Notes on Reproducible Builds for ESP-Miner
 
-# ... (Keep Introduction and Goal section)
+## A note on the Bitaxe Factory Images?
 
-## Methodology
+The Official Bitaxe "factory" binaries embed device-specific offsets and other data; upstream does not publish a generic merged image.  Therefore byte-for-byte identity with factory releases is not expected.
+
+## Methodology of Reproducible Builds in Nomadbuild
 
 * **Controlled Environment:** Builds run inside the `nomadbuild` Docker image (based on `espressif/idf:v5.4`). This locks compiler, ESP-IDF, Python and system paths.
 * **Fixed Source:** `scripts/repro_builder.py` clones **upstream** `bitaxeorg/ESP-Miner` and checks out the exact git tag passed to `repro.sh`.
@@ -11,9 +13,6 @@
 * **Generic Merged Binary:** After build, upstream `merge_bin.sh` combines bootloader, app, partitions, www and OTA images into a single `merged-<tag>.bin`.
 * **Hashing:** We calculate SHA-256 of that merged binary.
 * **Two-Pass Comparison (`./repro.sh --tag <tag>`):** The script runs the entire sequence twice inside the same container and compares the hashes.
-
-## Why Not Compare With Factory Images?
-Official Bitaxe "factory" binaries embed device-specific offsets and sometimes extra partitions; upstream does not publish a generic merged image.  Therefore byte-for-byte identity with factory releases is not expected.
 
 ## Findings
 
@@ -27,4 +26,4 @@ Official Bitaxe "factory" binaries embed device-specific offsets and sometimes e
 
 ## Conclusion
 
-`repro.sh` + `repro_builder.py` allow **anyone** to independently build upstream ESP-Miner firmware for a given tag and verify internal reproducibility of the resulting generic merged binary.  This offers strong assurance that binaries produced by NomadBuild match the public source, even though they may differ from Bitaxe factory releases. 
+With the help of `repro.sh` + `repro_builder.py` **anyone** can independently build an upstream ESP-Miner firmware for a given tag and verify internal reproducibility of the resulting generic merged binary.  This offers strong assurance that binaries produced by NomadBuild match the public source, even though they may differ from Bitaxe factory releases. 
