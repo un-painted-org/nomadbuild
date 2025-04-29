@@ -75,5 +75,3 @@ See `docs/TESTING.md` for detailed guidance.
 *   **Device Identification:** Attempts to identify the connected Bitaxe model using API information and `models.json` config, displaying it for user awareness.
 *   **Post-Flash Verification:** Checks if the device comes back online after firmware flashing and verifies the expected version string is reported via the API.
 *   **Internal Reproducibility Verified:** The build process uses fixed versions and timestamps to ensure that building the same tag twice within the provided Docker environment produces identical *generic merged binaries*, verified using the `repro.sh` script.
-
-* GitHub Repository: https://github.com/marsmensch/nomadbuild
