@@ -100,6 +100,14 @@ YOU ARE MARKING NOTHING AS COMPLETED YOURSELF UNLESS TOLD OTHERWISE. YOU MUST NO
     - Documentation in `docs/USAGE.md` is updated to describe cancellation behavior.
     - Unit/integration tests added to cover the new UI states and messages.
 
+80. **Improve Build Reproducibility by Pinning Dependencies** - *Not Started*
+    - **Goal:** Ensure builds are as deterministic as possible by pinning all external dependencies to specific versions.
+    - **Tasks:**
+      - **System Packages:** Identify specific versions of APT packages (`ca-certificates`, `curl`, `gnupg`, `pandoc`, `perl`, `python3-requests`, `python3-pip`, `python3-venv`, `nodejs`) available in the base `espressif/idf:v5.4` image and pin them in the `Dockerfile` using `package=version` syntax.
+      - **Python Package (`requests`):** Pin the `requests` package in the `Dockerfile`'s `pip install` command to a specific version (e.g., `requests==2.31.0`).
+      - **Verification:** Rebuild the Docker image and confirm the build succeeds with pinned versions.
+      - **Documentation:** Briefly mention the improved pinning in `docs/REPRODUCIBILITY_NOTES.md`.
+
 ### Medium Priority
 
 70. **Add Web UI Server Endpoint & Socket.IO Tests** - *Not Started*
