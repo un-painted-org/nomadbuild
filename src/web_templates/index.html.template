@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<!--
+IMPORTANT: This is a template file (index.html.template) that gets processed by the download_vendors.sh script.
+DO NOT edit index.html directly as it will be overwritten during the build process.
+
+Workflow:
+1. Make changes to this template file (index.html.template)
+2. Run download_vendors.sh to generate the final index.html file
+3. The Flask app serves the generated index.html file to users
+
+Template placeholders like %%ATTRIBUTIONS_HTML%% are replaced during processing.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#000000">
+    <meta name="description" content="NomadBuild - Self-sovereign Bitaxe firmware builder">
+    <title>NomadBuild</title>
+    
+    <!-- PWA Support -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" href="/static/img/favicon.png">
+    <link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="/static/css/normalize.css">
+    <link rel="stylesheet" href="/static/css/main.css">
+    
+    <!-- Preconnect to improve font loading performance -->
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+</head>
+<body>
+    <div class="app-container">
+        <!-- App Header -->
+        <header class="app-header">
+            <div class="logo-container">
+                <img src="/static/img/logo.png" alt="NomadBuild Logo" class="logo">
+                <div class="title-group">
+                    <h1>NomadBuild</h1>
+                    <p>Self-sovereign firmware builder</p>
+                </div>
+            </div>
+            <nav class="app-nav">
+                <ul>
+                    <li><button id="nav-build" class="nav-button active">Build</button></li>
+                    <li><button id="nav-flash" class="nav-button">Flash</button></li>
+                    <li><button id="nav-howto" class="nav-button">HowTo</button></li>
+                    <li><button id="nav-about" class="nav-button">About</button></li>
+                    <li><button id="nav-donation" class="nav-button">DONATION</button></li>
+                </ul>
+            </nav>
+        </header>
+        
+        <!-- Main Content Area -->
+        <main class="app-content">
+            <!-- Build Section -->
+            <section id="section-build" class="content-section active">
+                <div class="section-header">
+                    <h2>Build Firmware</h2>
+                    <p>Build self-sovereign firmware for your Bitaxe device</p>
+                </div>
+                
+                <div class="card-container">
+                    <div class="option-card" id="build-latest">
+                        <div class="card-icon">
+                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                            </svg>
+                            <div class="card-version-info" id="latest-tag-display"></div>
+                        </div>
+                        <h3>Latest Stable</h3>
+                        <p>Build the latest stable firmware</p>
+                    </div>
+                    
+                    <div class="option-card" id="build-tag">
+                        <div class="card-icon">
+                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                <path fill="currentColor" d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/>
+                            </svg>
+                            <div class="card-tag-list" id="specific-tags-display"></div>
+                        </div>
+                        <h3>Specific Version</h3>
+                        <p>Build from a specific tag</p>
+                    </div>
+                </div>
+                
+                <!-- Tag Selection (Initially Hidden) -->
+                <div id="tag-selection" class="hidden">
+                    <h3>Select Tag</h3>
+                    <div class="tag-list" id="tag-list">
+                        <!-- Tags will be populated here -->
+                    </div>
+                    <div id="tag-selection-info" class="tag-selection-info"></div>
+                    <div class="button-group">
+                        <button class="secondary-button" id="cancel-tag">Cancel</button>
+                    </div>
+                </div>
+                
+                <!-- Build Options (Initially Hidden) -->
+                <div id="build-options" class="hidden">
+                    <h3>Build Options</h3>
+                    <div class="options-list">
+                        <p class="option-note">Console output will show full build details by default.</p>
+                    </div>
+                    <div class="button-group">
+                        <button class="secondary-button" id="cancel-build">Cancel</button>
+                        <button class="primary-button" id="start-build">Start Build</button>
+                    </div>
+                </div>
+                
+                <!-- Build Progress (Initially Hidden) -->
+                <div id="build-progress" class="hidden">
+                    <div class="progress-indicator">
+                        <div class="progress-spinner"></div>
+                        <div class="progress-details">
+                            <h3 id="progress-status">Building...</h3>
+                            <p id="progress-message">Starting build process...</p>
+                            <div class="progress-bar-container">
+                                <div id="progress-bar" class="progress-bar"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="output-container">
+                        <div class="output-header">
+                            <h3><img src="/static/img/logo.png" alt="NomadBuild" class="app-logo-mini">Build Output</h3>
+                            <div class="output-controls">
+                                <button id="maximize-output" class="secondary-button" title="Maximize Output">Maximize</button>
+                                <button id="copy-output" class="secondary-button" title="Copy to Clipboard">Copy</button>
+                                <button id="clear-log-btn" class="secondary-button" title="Clear Log">Clear Log</button>
+                            </div>
+                        </div>
+                        <pre id="build-output" class="output-content"></pre>
+                    </div>
+                </div>
+                
+                <!-- Build Success (Initially Hidden) -->
+                <div id="build-complete" class="hidden">
+                    <div class="success-message">
+                        <svg viewBox="0 0 24 24" width="48" height="48">
+                            <path fill="#4CAF50" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                        </svg>
+                        <div class="success-text-content">
+                            <h3>Build Successful</h3>
+                            <p id="success-version">Version: </p>
+                        </div>
+                    </div>
+                    <div class="button-group">
+                        <button class="secondary-button" id="new-build">New Build</button>
+                        <button class="primary-button" id="goto-flash">Flash Device</button>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Flash Section -->
+            <section id="section-flash" class="content-section">
+                <div class="section-header">
+                    <h2>Flash Firmware</h2>
+                    <p>Flash your Bitaxe device with the last successfully built firmware</p>
+                    <p>Just built a binary? Point NomadBuild at your miner's IP and let it do the rest.</p>
+                </div>
+                
+                <div class="flash-container">
+                    <div class="flash-form">
+                        <div class="form-group">
+                            <label for="flash-ip">Device IP Address</label>
+                            <input type="text" id="flash-ip" placeholder="Enter Device IP Address">
+                        </div>
+                        
+                        <!-- Area to display info about the firmware to be flashed -->
+                        <div id="flash-info" class="flash-info-area"> 
+                            <p id="flash-available-version">Ready to Flash: <span class="version-highlight">Checking...</span></p>
+                            <p class="flash-detail-text">This will update both the core firmware (<code>esp-miner.bin</code>) and the web interface (<code>www.bin</code>).</p>
+                        </div>
+                        
+                        <div class="disclaimer-warning">
+                            <strong>Warning:</strong> By flashing custom firmware, you acknowledge that you understand the risks involved. While we strive for stability, we cannot accept responsibility for any device issues that may occur.
+                        </div>
+                        <p class="alt-flash-link">
+                            Prefer the official online flasher?&nbsp;
+                            <a href="https://bitaxeorg.github.io/bitaxe-web-flasher/" target="_blank" rel="noopener noreferrer">
+                                Open the Bitaxe Web Flasher
+                            </a>
+                        </p>
+                        <div class="button-group">
+                            <button class="primary-button" id="start-flash" disabled>Flash Device</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Flash Progress (Initially Hidden, Structure improved) -->
+                    <div id="flash-progress" class="hidden">
+                        <div class="progress-indicator">
+                            <div id="flash-spinner" class="progress-spinner"></div>
+                            <div class="progress-details">
+                                <h3 id="flash-status">Flashing...</h3>
+                                <!-- Specific message area -->
+                                <p id="flash-message">Preparing to flash...</p> 
+                                <!-- Optional detailed progress bar -->
+                                <div class="progress-bar-container" id="flash-progress-bar-container" style="display: none;"> 
+                                    <div id="flash-progress-bar" class="progress-bar"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Separate area for final status/output -->
+                        <div id="flash-output-container" class="output-container" style="margin-top: 1rem; display: none;"> 
+                             <div class="output-header">
+                                <h3>Flash Log</h3>
+                                <div class="output-controls">
+                                    <button id="copy-flash-output" class="secondary-button" title="Copy to Clipboard">Copy</button>
+                                     <button id="clear-flash-output-btn" class="secondary-button" title="Clear Log">Clear</button>
+                                </div>
+                            </div>
+                            <pre id="flash-output" class="output-content"></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- HowTo Section -->
+            <section id="section-howto" class="content-section">
+                <div class="section-header">
+                    <h2>How To Use NomadBuild</h2>
+                    <p>Learn how to build and flash firmware for your Bitaxe</p>
+                </div>
+                
+                <div class="howto-content">
+                    <div class="howto-section">
+                        <h3>What is NomadBuild?</h3>
+                        <p>NomadBuild is a self-sovereign firmware builder for Bitaxe devices. It allows you to build and flash firmware without relying on external services or trusting third parties.</p>
+                        
+                        <h3>Why use NomadBuild?</h3>
+                        <p>By building firmware locally, you can:</p>
+                        <ul>
+                            <li>Verify the source code before building</li>
+                            <li>Customize the firmware to your needs</li>
+                            <li>Avoid trusting pre-built binaries from unknown sources</li>
+                            <li>Ensure your device is running exactly what you intend</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="howto-section">
+                        <h3>Building Firmware</h3>
+                        <ol>
+                            <li>Open the <strong>Build</strong> tab.</li>
+                            <li>Either press <em>Start&nbsp;Build</em> (latest stable) <br>or pick a tag from the list first.</li>
+                            <li>Grab a coffee – progress appears in real-time.</li>
+                            <li>When you see <strong>Build&nbsp;Successful</strong>, hit the "Flash&nbsp;Device" button to jump straight to flashing.</li>
+                        </ol>
+                        
+                        <h3>Flashing Firmware</h3>
+                        <ol>
+                            <li>Open the <strong>Flash</strong> tab (or arrive there via the button).</li>
+                            <li>Type your Bitaxe's IP (e.g. <code>192.168.1.42</code>).</li>
+                            <li>Click <em>Flash&nbsp;Device</em>. The miner will reboot automatically when done.</li>
+                            <li>Refresh your Bitaxe web UI to verify the new version appears.</li>
+                        </ol>
+                        
+                        <h3>Troubleshooting</h3>
+                        <p>Common issues and solutions:</p>
+                        <ul>
+                            <li><strong>Build fails:</strong> Run <code>./nomadbuild.sh --build-image</code> to refresh the tool-chain, then try again.</li>
+                            <li><strong>Flash fails:</strong> Ensure your Bitaxe and computer are on the same network and the IP is correct.</li>
+                            <li><strong>Web UI missing:</strong> Clear your browser cache or open in a private window.</li>
+                        </ul>
+                        
+                        <h3>Getting Help</h3>
+                        <p>For further assistance, visit the GitHub repository linked in the About section to report issues or ask questions.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- About Section -->
+            <section id="section-about" class="content-section">
+                <div class="section-header">
+                    <h2>About NomadBuild</h2>
+                    <p>Self-sovereign firmware builder for Bitaxe devices</p>
+                </div>
+                
+                <div class="about-content">
+                    <div class="about-logo">
+                        <img src="/static/img/logo.png" alt="NomadBuild Logo" class="large-logo">
+                    </div>
+                    
+                    <div class="about-details">
+                        <div class="version-info">
+                            <p><strong>Version:</strong> <span id="app-version">%%VERSION%%</span></p>
+                            <p><strong>Build Date:</strong> <span id="build-date">%%BUILD_DATE%%</span></p>
+                        </div>
+                        
+                        <p class="trademark-notice">The Bitaxe name and logo are internationally trademarked by <a href="https://bitaxe.org/" target="_blank" rel="noopener noreferrer">bitaxeorg</a>.</p>
+                        
+                        <div class="about-columns">
+                            <div class="about-column about-links">
+                                <h3>Connect & Contribute</h3>
+                                <ul class="social-links">
+                                    <li>
+                                        <a href="https://github.com/marsmensch/nomadbuild" target="_blank" rel="noopener noreferrer">
+                                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                                <path fill="currentColor" d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                                            </svg>
+                                            GitHub Repository
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="https://x.com/marsmensch" target="_blank" rel="noopener noreferrer">
+                                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                                <path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                                            </svg>
+                                            X (Twitter)
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a href="https://iris.to/marsmensch" target="_blank" rel="noopener noreferrer">
+                                            <svg viewBox="0 0 24 24" width="24" height="24">
+                                                <path fill="currentColor" d="M19.21,12a7.21,7.21,0,1,1-7.21-7.21A7.21,7.21,0,0,1,19.21,12Z"/>
+                                                <path fill="currentColor" d="M9.13,16.75a1.78,1.78,0,0,1-.87-.22,1.72,1.72,0,0,1-.76-1.44V12a1.81,1.81,0,0,1,.86-1.51,1.83,1.83,0,0,1,1.8.12L14,12.69a1.75,1.75,0,0,1,0,2.62l-3.89,2.08A1.81,1.81,0,0,1,9.13,16.75Z"/>
+                                            </svg>
+                                            Nostr Profile
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <div class="about-column donation-info about-donation">
+                                <h3>Support NomadBuild</h3>
+                                <p>Scan the QR code or copy the address below:</p>
+                                <div class="donation-qr" id="lnurl-about-qr">
+                                    <!-- About Tab LNURL QR code generated here -->
+                                </div>
+                                <div class="donation-address break-all" id="lnurl-about-address">lnurl1dp68gurn8ghj7ampd3kx2ar0veekzar0wd5xjtnrdakj7tnhv4kxctttdehhwm30d3h82unvwqhk6ctjwvmxp98a</div>
+                                <button class="primary-button copy-address-btn" data-address="lnurl1dp68gurn8ghj7ampd3kx2ar0veekzar0wd5xjtnrdakj7tnhv4kxctttdehhwm30d3h82unvwqhk6ctjwvmxp98a">COPY LNURL</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Donation Section -->
+            <div id="section-donation" class="content-section">
+                <div class="section-header">
+                    <h2>WOULD YOU LIKE TO SUPPORT US?</h2>
+                    <p>YOUR BITCOIN CONTRIBUTION GOES DIRECTLY TOWARDS DEVELOPING OPEN BITCOIN MINERS FOR ALL.</p>
+                </div>
+                
+                <div class="donation-options"> 
+                    <!-- Restored original OSMU donation options -->
+                    <div class="donation-option">
+                        <h3>BTC DONATION</h3>
+                        <div class="donation-address">bc1qfc5fgpy96z0q6ltvh99pcujec9mwzugv3zcste</div>
+                        <button class="primary-button copy-address-btn" data-address="bc1qfc5fgpy96z0q6ltvh99pcujec9mwzugv3zcste">COPY ADDRESS</button>
+                        <div class="donation-qr" id="btc-donation-qr">
+                            <!-- QR code will be generated via JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <div class="donation-option">
+                        <h3>LIGHTNING DONATION</h3>
+                        <div class="donation-address">osmu@getalby.com</div>
+                        <button class="primary-button copy-address-btn" data-address="osmu@getalby.com">COPY ADDRESS</button>
+                        <div class="donation-qr" id="ln-donation-qr">
+                            <!-- QR code will be generated via JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="app-footer">
+            <p class="copyright-text">© 2025 <a href="https://x.com/marsmensch" target="_blank" rel="noopener noreferrer">marsmensch</a>. <a href="https://github.com/marsmensch/nomadbuild" target="_blank" rel="noopener noreferrer">NomadBuild</a> is a community tool for the self-sovereign individual.</p>
+            <p class="attribution-link"><a href="#" id="show-attribution-btn">Third-Party Attributions</a></p>
+        </footer>
+    </div>
+    
+    <!-- JavaScript -->
+    <script src="/static/vendor/js/socket.io.min.js"></script>
+    <script src="/static/vendor/js/qrcode.min.js"></script>
+    <script src="/static/vendor/js/html5-qrcode.min.js"></script>
+    <script src="/static/js/main.js"></script>
+    
+    <!-- Attribution Modal -->
+    <div id="attribution-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Third-Party Attributions</h3>
+                <button id="close-attribution-modal" class="icon-button">
+                    <svg viewBox="0 0 24 24" width="24" height="24">
+                        <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <h4>Bitaxe Project</h4>
+                <ul class="attribution-details">
+                    <li><strong>ESP-Miner Repository:</strong> <a href="https://github.com/bitaxeorg/ESP-Miner" target="_blank" rel="noopener noreferrer">https://github.com/bitaxeorg/ESP-Miner</a></li>
+                    <li><strong>Website:</strong> <a href="https://bitaxe.org/" target="_blank" rel="noopener noreferrer">https://bitaxe.org/</a></li>
+                    <li><strong>License:</strong> GPL-3.0</li>
+                    <li><strong>Description:</strong> Bitaxe is an open-source Bitcoin ASIC miner for the ESP32. The ESP-Miner firmware powers Bitaxe hardware devices.</li>
+                </ul>
+                
+                <h4>Socket.IO (v4.7.4)</h4>
+                <ul class="attribution-details">
+                    <li><strong>Source:</strong> <a href="https://socket.io/" target="_blank" rel="noopener noreferrer">https://socket.io/</a></li>
+                    <li><strong>Repository:</strong> <a href="https://github.com/socketio/socket.io" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                    <li><strong>License:</strong> MIT</li>
+                    <li><strong>Description:</strong> Socket.IO enables real-time, bidirectional and event-based communication between the browser and the server.</li>
+                </ul>
+                
+                <h4>QRCode.js (v1.0.0)</h4>
+                <ul class="attribution-details">
+                    <li><strong>Source:</strong> <a href="https://davidshimjs.github.io/qrcodejs/" target="_blank" rel="noopener noreferrer">https://davidshimjs.github.io/qrcodejs/</a></li>
+                    <li><strong>Repository:</strong> <a href="https://github.com/davidshimjs/qrcodejs" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                    <li><strong>License:</strong> MIT</li>
+                    <li><strong>Description:</strong> QRCode.js is a cross-browser QRCode generator for JavaScript.</li>
+                </ul>
+                
+                <h4>HTML5-QRCode (v2.3.8)</h4>
+                <ul class="attribution-details">
+                    <li><strong>Source:</strong> <a href="https://scanapp.org/" target="_blank" rel="noopener noreferrer">https://scanapp.org/</a></li>
+                    <li><strong>Repository:</strong> <a href="https://github.com/mebjas/html5-qrcode" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                    <li><strong>License:</strong> Apache-2.0</li>
+                    <li><strong>Description:</strong> HTML5 QR code scanner library that can be embedded in websites for QR code scanning.</li>
+                </ul>
+                
+                <h4>License Information</h4>
+                <div class="license-text">
+                    <h5>MIT License</h5>
+                    <p>Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:</p>
+                    <p>The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.</p>
+                    <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
+                    
+                    <h5>Apache License 2.0</h5>
+                    <p>A complete copy of the Apache License 2.0 can be found at: <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">https://www.apache.org/licenses/LICENSE-2.0</a></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="close-attribution-btn" class="secondary-button">Close</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

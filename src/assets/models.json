@@ -1,0 +1,37 @@
+[
+  {
+    "name": "Bitaxe Max",
+    "deviceModel": ["max"],
+    "boardVersions": ["102", "2.2"]
+  },
+  {
+    "name": "Bitaxe Ultra",
+    "deviceModel": ["ultra"],
+    "boardVersions": ["201", "202", "203", "204", "205", "0.11"]
+  },
+  {
+    "name": "Bitaxe Supra",
+    "deviceModel": ["supra"],
+    "boardVersions": ["400", "401", "402", "403"]
+  },
+  {
+    "name": "Bitaxe Supra Hex",
+    "deviceModel": [],
+    "boardVersions": ["701", "702"]
+  },
+  {
+    "name": "Bitaxe Gamma",
+    "deviceModel": ["gamma"],
+    "boardVersions": ["601"]
+  },
+  {
+    "name": "Bitaxe GammaTurbo",
+    "deviceModel": ["gammaturbo"],
+    "boardVersions": ["800", "801", "802", "803", "804"]
+  },
+  {
+    "name": "NerdQAxe++",
+    "deviceModel": ["nerdqaxe++"],
+    "boardVersions": []
+  }
+] 
