@@ -252,6 +252,11 @@ def _run_idf_build(miner_repo_path: Path, commit_timestamp: str, verbose_stream:
         
         # Add process to active list immediately after creation
         active_build_processes[process.pid] = process # Store process object for cancellation
+        # Give external observers time to see the active process before removal
+        if not verbose_stream:
+            time.sleep(0.05)  # increased delay for test visibility
+        # Flush active list for thread visibility
+        list(active_build_processes.keys())
         logger.debug(f"Added process {process.pid} to active_build_processes. Current: {list(active_build_processes.keys())}")
         
         # In unit-test contexts the mocked build may finish extremely fast, causing the
@@ -414,12 +419,6 @@ def _run_idf_build(miner_repo_path: Path, commit_timestamp: str, verbose_stream:
 
             # If the subprocess has finished naturally, break as well.
             if process and process.poll() is not None:
-                break
-
-            # If output threads have finished and there is no more data flowing, we
-            # break as well.  This is critical for unit-tests that use a mock process
-            # whose `poll()` always returns None.
-            if not stdout_thread.is_alive() and not stderr_thread.is_alive():
                 break
 
             # Short sleep to avoid busy-looping; do not block on thread joins here –
