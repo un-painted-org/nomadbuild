@@ -1,4 +1,3 @@
-import builtins
 import errno
 import json
 import pytest
@@ -10,15 +9,13 @@ def test_prepare_source_code_disk_full(monkeypatch, tmp_path):
     # Stub checkout_tag and run_command to skip git operations
     monkeypatch.setattr(build_mod, "checkout_tag", lambda mp, tag, cb: "commit123")
     monkeypatch.setattr(build_mod, "run_command", lambda *args, **kwargs: None)
-    # Monkeypatch open to simulate disk-full on version.txt write
-    orig_open = builtins.open
-    def fake_open(path, mode='r', *args, **kwargs):
-        # Only fail on writing version.txt
-        p = str(path)
-        if p.endswith("version.txt") and 'w' in mode:
+    # Monkeypatch Path.write_text to simulate disk-full on version.txt
+    orig_write_text = build_mod.Path.write_text
+    def fake_write_text(self, data, encoding=None, errors=None):
+        if self.name == "version.txt":
             raise OSError(errno.ENOSPC, "No space left on device")
-        return orig_open(path, mode, *args, **kwargs)
-    monkeypatch.setattr(builtins, "open", fake_open)
+        return orig_write_text(self, data, encoding=encoding, errors=errors)
+    monkeypatch.setattr(build_mod.Path, "write_text", fake_write_text)
     # Expect RuntimeError when version.txt write fails
     with pytest.raises(RuntimeError) as excinfo:
         build_mod._prepare_source_code(tmp_path, "v1.2.3", None)

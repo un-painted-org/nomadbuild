@@ -90,6 +90,16 @@ YOU ARE MARKING NOTHING AS COMPLETED YOURSELF UNLESS TOLD OTHERWISE. YOU MUST NO
       - CI passes on pull-requests; workflow only pushes on tags.
       - Documentation updated.
 
+79. **Improve Build Cancellation UX Clarity** - *Not Started*
+  - Users have reported confusion about what happens when they cancel a build via the UI.
+  - Update the web UI and CLI messaging to clearly indicate the cancellation progression and final state.
+  - Acceptance Criteria:
+    - Cancel button becomes disabled and label changes to "Cancelled" immediately upon user action.
+    - A confirmation toast/modal appears summarizing that the build has been halted and no further operations will run.
+    - Build progress bar resets or displays a distinct "Cancelled at X%" state with appropriate styling.
+    - Documentation in `docs/USAGE.md` is updated to describe cancellation behavior.
+    - Unit/integration tests added to cover the new UI states and messages.
+
 ### Medium Priority
 
 70. **Add Web UI Server Endpoint & Socket.IO Tests** - *Not Started*
