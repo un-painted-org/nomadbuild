@@ -40,7 +40,8 @@ def test_cancel_build_with_no_active_thread(mock_emit, mock_request_context):
         # Verify that emit was called with correct arguments
         mock_emit.assert_called_once_with('build_status', {
             'status': 'cancelled',
-            'message': 'No active build to cancel'
+            'message': 'No active build to cancel',
+            'progress': 0
         })
     finally:
         # Restore original state
@@ -86,7 +87,8 @@ def test_cancel_build_with_active_thread(mock_emit, mock_processes, mock_request
         # Verify that emit was called with correct arguments
         mock_emit.assert_called_once_with('build_status', {
             'status': 'cancelled',
-            'message': 'Build was cancelled by user request'
+            'message': 'Build was cancelled by user request',
+            'progress': 0
         })
     finally:
         # Restore the module's original state
