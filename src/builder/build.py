@@ -421,6 +421,11 @@ def _run_idf_build(miner_repo_path: Path, commit_timestamp: str, verbose_stream:
             if process and process.poll() is not None:
                 break
 
+            # Only break early on threads finishing when verbose_stream is True (e.g., Web UI).
+            # Prevent premature exit in CLI mode until cancellation or process completion.
+            if verbose_stream and not stdout_thread.is_alive() and not stderr_thread.is_alive():
+                break
+
             # Short sleep to avoid busy-looping; do not block on thread joins here –
             # we will join them after the loop.
             time.sleep(0.05)
