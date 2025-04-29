@@ -707,12 +707,14 @@ def handle_cancel_build():
         if error_msg:
             socketio.emit('build_status', {
                 'status': 'cancelled',
-                'message': f'Build cancellation partially completed with errors: {error_msg}'
+                'message': f'Build cancellation partially completed with errors: {error_msg}',
+                'progress': builder_build.build_progress
             })
         else:
             socketio.emit('build_status', {
                 'status': 'cancelled',
-                'message': 'Build was cancelled by user request'
+                'message': 'Build was cancelled by user request',
+                'progress': builder_build.build_progress
             })
     else:
         logger.info("No active build to cancel.")
@@ -722,7 +724,8 @@ def handle_cancel_build():
         build_thread = None
         socketio.emit('build_status', {
             'status': 'cancelled',
-            'message': 'No active build to cancel'
+            'message': 'No active build to cancel',
+            'progress': builder_build.build_progress
         })
 
 @socketio.on('get_last_build')

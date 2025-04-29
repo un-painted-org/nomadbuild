@@ -39,7 +39,8 @@ def test_cancel_build_with_no_active_thread_fixed(mock_emit, mock_request_contex
         # Verify that emit was called with correct arguments
         mock_emit.assert_called_once_with('build_status', {
             'status': 'cancelled',
-            'message': 'No active build to cancel'
+            'message': 'No active build to cancel',
+            'progress': 0
         })
     finally:
         # Restore original state
@@ -82,7 +83,8 @@ def test_cancel_build_with_active_thread_enhanced(mock_emit, mock_processes, moc
         # Verify that emit was called with correct arguments
         mock_emit.assert_called_once_with('build_status', {
             'status': 'cancelled',
-            'message': 'Build was cancelled by user request'
+            'message': 'Build was cancelled by user request',
+            'progress': 0
         })
         
         # Verify state was properly cleaned up
@@ -130,7 +132,8 @@ def test_cancel_build_handles_errors(mock_emit, mock_processes, mock_request_con
             # Verify that emit was called with correct error arguments
             mock_emit.assert_called_once_with('build_status', {
                 'status': 'cancelled',
-                'message': 'Build cancellation partially completed with errors: Test error'
+                'message': 'Build cancellation partially completed with errors: Test error',
+                'progress': 0
             })
             
             # Verify state was properly cleaned up despite the error

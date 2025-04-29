@@ -309,18 +309,31 @@ function initializeSocket() {
         } else if (data.status === 'cancelled') {
             // Handle build cancellation
             buildInProgress = false;
-            
+
+            // Show inline cancellation banner
+            const buildProgressSection = document.getElementById('build-progress');
+            if (buildProgressSection) {
+                // Remove existing banner if any
+                const oldBanner = document.getElementById('cancel-banner');
+                if (oldBanner) oldBanner.remove();
+                const banner = document.createElement('div');
+                banner.id = 'cancel-banner';
+                banner.className = 'alert alert-warning';
+                banner.textContent = `Build cancelled at ${data.progress || buildProgress}%`;
+                buildProgressSection.parentNode.insertBefore(banner, buildProgressSection);
+            }
+
             // Update progress status to show cancellation
             if (progressStatusElem) {
                 progressStatusElem.textContent = 'Build Cancelled';
                 progressStatusElem.style.color = 'var(--color-warning)';
             }
-            
+
             // Update progress message
             if (progressMessageElem) {
                 progressMessageElem.textContent = data.message || 'Build was cancelled by user';
             }
-            
+
             // Add cancellation notice to build output
             appendToBuildOutput('');
             appendToBuildOutput('*** BUILD CANCELLED BY USER ***');
@@ -354,8 +367,9 @@ function initializeSocket() {
                 }
             }
             
-            // Show toast notification about cancellation
-            showToast('Build cancelled by user', 'warning');
+            // Show toast notification about cancellation with percentage
+            const cancelPercent = data.progress !== undefined ? data.progress : buildProgress;
+            showToast(`Build cancelled at ${cancelPercent}%`, 'warning');
             
             messageHandled = true;
             hideFlashProgress(); // Also hide flash progress on cancel
