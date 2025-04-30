@@ -146,3 +146,4 @@ archive/     # ignore archived scripts and resources
 .cursor/     # ignore cursor-related temporary files
 # SpecStory explanation file
 .specstory/.what-is-this.md
+backlog.md
