@@ -22,8 +22,8 @@ fi
 # Verify required Python packages are installed (dependencies should already be pre-installed)
 if ! python -c "import flask, flask_socketio" &>/dev/null; then
     echo "WARNING: Required Python packages not found, installation was supposed to happen during image build"
-    echo "Attempting emergency installation of required packages..."
-    pip install flask flask-socketio pytest pytest-mock requests
+    # echo "Attempting emergency installation of required packages..."
+    # pip install flask flask-socketio pytest pytest-mock requests
 else
     echo "Required Python packages verified."
 fi

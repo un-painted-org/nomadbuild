@@ -168,6 +168,18 @@ def main():
     miner_repo_path = fetch_repo(ESP_MINER_REPO, "ESP-Miner")
     # Prepare source only once (checkout)
     checkout_tag(miner_repo_path, args.tag)
+
+    # --- Repro Hardening: verify clean tree & canonicalize mtimes ---
+    # 1) Abort if the upstream repo is dirty (should never happen in CI)
+    dirty_status = run_command(["git", "status", "--porcelain"], cwd=miner_repo_path)
+    if dirty_status:
+        logger.error("Upstream repository has uncommitted changes; aborting for reproducibility.")
+        sys.exit(1)
+
+    # 2) Ensure all file mtimes equal the commit timestamp (SOURCE_DATE_EPOCH)
+    commit_ts_cmd = ["find", ".", "-exec", "touch", "-hcd", "@$(git log -1 --pretty=%ct)", "{}", "+"]
+    run_command(["bash", "-c", " ".join(commit_ts_cmd)], cwd=miner_repo_path, capture_output=False, description="normalize mtimes")
+
     commit_timestamp = _get_commit_timestamp(miner_repo_path, args.tag)
     if not commit_timestamp: sys.exit("Failed to get commit timestamp.")
             
@@ -186,7 +198,16 @@ def main():
     _run_idf_clean(miner_repo_path)
     # IMPORTANT: Need to ensure source state is identical, re-checkout or just rely on clean?
     # Re-checkout is safest to undo any potential build side effects not caught by clean
+    # Add extra git clean for good measure before checkout
+    logger.info("Cleaning source tree again before Run 2 checkout...")
+    run_command(["git", "clean", "-fdx"], cwd=miner_repo_path, capture_output=False, description="pre-run2 clean")
     checkout_tag(miner_repo_path, args.tag) 
+    # Also re-normalize timestamps after checkout for Run 2
+    logger.info("Normalizing file timestamps again before Run 2 build...")
+    commit_ts_cmd = ["find", ".", "-exec", "touch", "-hcd", "@$(git log -1 --pretty=%ct)", "{}", "+"]
+    run_command(["bash", "-c", " ".join(commit_ts_cmd)], cwd=miner_repo_path, capture_output=False, description="normalize mtimes run2")
+    
+    # Run the build again with the same timestamp
     if not _run_idf_build(miner_repo_path, commit_timestamp): sys.exit("Build Run 2 Failed.")
     merged_path_2 = _run_merge_script(miner_repo_path, f"merged-{args.tag}-run2.bin")
     hash_run2 = _calculate_hash(merged_path_2)

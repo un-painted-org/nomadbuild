@@ -229,6 +229,13 @@ def static_version(filename):
     logger.info(f"Version file requested: {filename}")
     return send_from_directory(STATIC_DIR / 'version', filename)
 
+@app.route('/assets/<path:filename>')
+def assets_files(filename):
+    """Serve asset files (e.g., victory.png) from the src/assets directory."""
+    asset_dir = CURRENT_DIR / 'assets'
+    logger.info(f"Asset file requested: {filename}")
+    return send_from_directory(asset_dir, filename)
+
 @app.route('/version/<path:filename>')
 def version_alias(filename):
     """Alias to serve version files from various paths."""
@@ -1081,7 +1088,7 @@ def run_build_thread(tag):
         if isinstance(e, (BuildFailedError, FileNotFoundError, ValueError)):
              error_message = str(e)
         else: # Unexpected exception
-            error_message = f"An unexpected error occurred: {str(e)}"
+            error_message = f"Build failed: {str(e)}"
             logger.exception(f"Unexpected error during build for tag {tag}")
             traceback.print_exc()
 
