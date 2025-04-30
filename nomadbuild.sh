@@ -191,7 +191,7 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
     fi
     
     # Build command with optional --no-cache flag
-    BUILD_CMD="docker build -q" # Switched to -q for quiet
+    BUILD_CMD="docker build -q" # Restore -q for quiet build, outputting only image ID on success
     
     if [ "$NO_CACHE" = true ]; then
         # echo "Using --no-cache option as requested."

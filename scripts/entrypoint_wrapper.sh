@@ -9,11 +9,21 @@
 echo "Sourcing ESP-IDF environment..."
 source "$IDF_PATH/export.sh"
 
+# --- Activate Virtual Environment (after IDF env) --- #
+VENV_PATH="/opt/venv"
+if [ -f "$VENV_PATH/bin/activate" ]; then
+    echo "Activating Python virtual environment at $VENV_PATH..."
+    source "$VENV_PATH/bin/activate"
+else
+    echo "WARNING: Virtual environment activation script not found at $VENV_PATH/bin/activate"
+    # Attempting to continue without venv might fail later steps
+fi
+
 # Verify required Python packages are installed (dependencies should already be pre-installed)
 if ! python -c "import flask, flask_socketio" &>/dev/null; then
     echo "WARNING: Required Python packages not found, installation was supposed to happen during image build"
-    echo "Attempting emergency installation of required packages..."
-    pip install flask flask-socketio pytest pytest-mock requests
+    # echo "Attempting emergency installation of required packages..."
+    # pip install flask flask-socketio pytest pytest-mock requests
 else
     echo "Required Python packages verified."
 fi

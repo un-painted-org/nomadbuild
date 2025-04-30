@@ -11,16 +11,26 @@ import json
 from pathlib import Path
 import re
 import threading # Needed for _run_idf_build
-from typing import List, Optional, Callable # Add Callable
+from typing import List, Optional, Callable, Tuple
 import time
 import signal  # Add import for process group kill
+import shutil
 
 # Import necessary functions/classes from other modules
 from .utils import run_command, get_env_dir, Spinner, CONTAINER_OUTPUT_DIR, IDF_BUILD_LOG_FILENAME
-from .git_ops import checkout_tag # Needed for build_esp_miner (restored original logic)
+from .git_ops import checkout_tag # , is_repo_clean <-- Add back if needed
 
 # Placeholder for logger - Will be configured properly in cli.py
 logger = logging.getLogger(__name__)
+
+# Define custom exception for build failures
+class BuildFailedError(Exception):
+    pass
+
+# Define the path to the correct Python interpreter for ESP-IDF builds
+ESP_IDF_PYTHON = "/opt/esp/python_env/idf5.4_py3.12_env/bin/python"
+# Define the full path to the idf.py script
+IDF_PY_SCRIPT = "/opt/esp/idf/tools/idf.py"
 
 # --- Global state for tracking build status and active processes ---
 # Use threading.Event for cancellation signaling
@@ -33,505 +43,402 @@ current_tag = None
 
 # --- Functions moved from main script ---
 
-def _prepare_source_code(miner_repo_path: Path, selected_tag: str, progress_callback: Callable[[int, str], None] | None = None) -> tuple[str, str]:
-    """Prepares the source code: checks out tag, updates submodules, writes version.txt.
-    Returns the commit hash and the full expected version string (tag + suffix).
+def get_commit_timestamp(repo_path: Path, ref: str) -> str | None:
+    """Gets the commit timestamp (Unix epoch) for a given Git ref (tag/commit/branch)."""
+    logger.debug(f"Getting commit timestamp for ref '{ref}'...")
+    try:
+        # %ct gives committer date, UNIX timestamp
+        ts_str = run_command(["git", "log", "-1", "--pretty=%ct", ref], cwd=repo_path)
+        if ts_str and ts_str.isdigit():
+            logger.debug(f"Found timestamp: {ts_str} for ref '{ref}'")
+            return ts_str
+        logger.error(f"Could not parse commit timestamp for ref '{ref}'. Output: '{ts_str}'")
+        return None
+    except Exception as e:
+        logger.error(f"Could not get commit timestamp for ref '{ref}': {e}")
+        return None
+
+def _prepare_source_code(miner_repo_path: Path, selected_tag: str, progress_callback: Optional[Callable[[int, str], None]] = None) -> Tuple[str, str, str]:
+    """Checks out the specified tag, updates submodules, and ensures clean state.
+    
+    Returns:
+        Tuple[str, str, str]: (commit_hash, expected_version, commit_timestamp)
+    Raises:
+        RuntimeError: If checkout or submodule update fails.
+        ValueError: If tag does not exist.
     """
-    if progress_callback: progress_callback(6, "Checking out tag...")
+    if progress_callback: progress_callback(20, f"Preparing source code for tag: {selected_tag}...")
     logger.info(f"Preparing source code for tag: {selected_tag}")
+    
+    # Checkout tag first
+    try:
+        # Use the existing checkout_tag function from git_ops
+        # Pass the progress callback to it if available
+        commit_hash = checkout_tag(miner_repo_path, selected_tag, progress_callback)
+        if not commit_hash:
+             logger.error(f"Failed to checkout tag {selected_tag}.")
+             raise ValueError(f"Tag '{selected_tag}' not found or checkout failed.")
+        logger.info(f"Checked out tag {selected_tag} at commit {commit_hash}")
+    except ValueError as e:
+        logger.error(f"Error checking out tag: {e}")
+        raise # Re-raise value error (tag not found etc.)
+    except Exception as e:
+        logger.error(f"Unexpected error during tag checkout: {e}")
+        raise RuntimeError("Tag checkout failed.") from e
 
-    # --- Step 1: Checkout Tag ---
-    # We assume the tag exists, checkout_tag will raise if it doesn't
-    commit_hash = checkout_tag(miner_repo_path, selected_tag, progress_callback)
-    if not commit_hash:
-        # checkout_tag already logged error/cancelled
-        raise RuntimeError(f"Failed to checkout tag {selected_tag}.")
-    logger.info(f"Checked out tag {selected_tag} at commit {commit_hash}")
-    if progress_callback: progress_callback(15, f"Tag {selected_tag} checked out.")
-
-    # --- ADD CHECK: Check if cancelled after checkout_tag --- 
-    if build_cancel_event.is_set():
-        logger.info("Build cancelled after checkout_tag.")
-        return None, None # Signal cancellation
-
-    # --- Step 2: Update Submodules ---
-    message = "Updating submodules..."
-    if progress_callback: progress_callback(20, message)
-    logger.info(message)
+    # Update submodules after successful checkout
+    if progress_callback: progress_callback(30, "Updating submodules...")
+    logger.info("Updating submodules...")
     try:
         run_command(["git", "submodule", "update", "--init", "--recursive"], cwd=miner_repo_path, check=True)
         logger.info("Submodules updated successfully.")
-        if progress_callback: progress_callback(30, "Submodules updated.")
     except Exception as e:
         logger.error(f"Failed to update submodules: {e}")
-        if progress_callback: progress_callback(20, f"Error updating submodules: {e}")
-        # Decide if this is fatal
+        if progress_callback: progress_callback(30, f"Error updating submodules: {e}")
         raise RuntimeError("Submodule update failed.") from e
-
-    # --- ADD CHECK: Check if cancelled after submodules --- 
-    if build_cancel_event.is_set():
-        logger.info("Build cancelled after submodule update.")
-        return None, None # Signal cancellation
-
-    # --- Step 3: Determine and Write version.txt ---
-    # Construct the full expected version WITH suffix
+        
+    # Construct expected version string (tag + suffix)
+    # TODO: Make suffix configurable? For now, hardcode '-sovereign'
     expected_version = f"{selected_tag}-sovereign"
     logger.info(f"Constructed full expected version: {expected_version}")
 
-    version_file_path = miner_repo_path / "version.txt"
-    message = f"Writing version file ({version_file_path}) with content: {expected_version}"
-    logger.info(message)
-    if progress_callback: progress_callback(32, "Creating version file...")
+    # Write version string to version.txt for the build system to pick up
+    version_file = miner_repo_path / "version.txt"
     try:
-        # Clean existing file first
-        if version_file_path.exists():
-            try: 
-                old_content = version_file_path.read_text().strip()
-                logger.debug(f"Removing existing version.txt (content: '{old_content}')")
-                version_file_path.unlink()
-            except Exception as e_unlink:
-                logger.warning(f"Could not remove existing version.txt: {e_unlink}")
-        
-        # Write the expected version (e.g., v2.6.x-sovereign) to version.txt
-        version_file_path.write_text(expected_version + "\n") 
-        
-        # Verify write
-        written_version = version_file_path.read_text().strip()
-        if written_version != expected_version:
-            logger.error(f"Version file content mismatch! Expected '{expected_version}', got '{written_version}'")
-            raise RuntimeError("Failed to write correct version to version.txt")
+        version_file.write_text(expected_version)
+        # Verification step
+        if version_file.read_text() == expected_version:
+            logger.info(f"Writing version file ({version_file}) with content: {expected_version}")
         else:
-            logger.info(f"Version file write verified: '{written_version}'")
-            if progress_callback: progress_callback(34, f"Version file '{expected_version}' created.")
-
+            # This case indicates a potential filesystem issue or race condition
+            logger.error(f"Verification failed after writing {version_file}! Content mismatch.")
+            raise RuntimeError(f"Version file write verification failed for {version_file}")
+    except OSError as e:
+        # Specific handling for OS errors (like disk full)
+        logger.error(f"OS error writing version file {version_file}: {e}")
+        # Re-raise as RuntimeError to be caught by tests or indicate critical failure
+        raise RuntimeError(f"Failed to write version file {version_file} due to OS error.") from e
     except Exception as e:
-        logger.error(f"Failed to write version.txt: {e}")
-        if progress_callback: progress_callback(32, f"Error writing version file: {e}")
-        raise RuntimeError("Failed to write version.txt file before build.") from e
+        # Catch other potential exceptions during file write/read
+        logger.error(f"Unexpected error writing or verifying version file {version_file}: {e}")
+        raise RuntimeError(f"Unexpected error with version file {version_file}.") from e
 
-    logger.info(f"Source code prepared. Returning Commit: {commit_hash}, Expected Version: {expected_version}")
-    return commit_hash, expected_version
+    # Get commit timestamp for SOURCE_DATE_EPOCH
+    commit_timestamp = get_commit_timestamp(miner_repo_path, selected_tag)
+    if not commit_timestamp:
+        logger.warning(f"Could not determine commit timestamp for tag {selected_tag}. Reproducibility might be affected.")
+        # Fallback or default timestamp?
+        commit_timestamp = str(int(time.time())) # Use current time as fallback
+        logger.warning(f"Using current timestamp as fallback: {commit_timestamp}")
+    else:
+        logger.info(f"Using commit timestamp {commit_timestamp} for SOURCE_DATE_EPOCH.")
+
+    # Return commit hash, expected version string, and commit timestamp
+    logger.info(f"Source code prepared. Returning Commit: {commit_hash}, Expected Version: {expected_version}, Timestamp: {commit_timestamp}")
+    return commit_hash, expected_version, commit_timestamp
 
 # Note: _get_commit_timestamp is Git specific, moved to git_ops.py if needed, unused here.
 
-def _run_idf_clean(miner_repo_path: Path, progress_callback: Callable[[int, str], None] | None = None):
+def _run_idf_clean(miner_repo_path: Path):
+    """Runs idf.py fullclean using the correct Python environment and direct subprocess call."""
     logger.info("Running idf.py fullclean...")
-    if progress_callback: progress_callback(31, "Executing idf.py fullclean...")
-    
-    global active_build_processes, build_cancel_event
-    miner_repo_path = Path(miner_repo_path)
-    cmd = ["idf.py", "fullclean"]
-    process = None
-    
+    # Start from parent env and remove known non-deterministic variables
+    idf_env = os.environ.copy()
+    non_deterministic = []
+    for k in list(idf_env.keys()):
+        if (k in ['HOME','USER','PWD','OLDPWD']
+            or k.startswith('TMP')
+            or k.startswith('TEMP')
+            or k.startswith('CI')
+            or k.startswith('GITHUB_')
+            or k.startswith('DOCKER_')
+            or k.startswith('SSH_')
+            or k.startswith('PYENV_')
+            or k in ['PYTHONPATH','PYTHONHOME']):
+            non_deterministic.append(k)
+    for k in non_deterministic:
+        idf_env.pop(k, None)
+    # Ensure build-relevant variables are set
+    idf_env['IDF_TARGET'] = 'esp32s3'
+    # Execute idf.py script directly with the ESP-IDF Python interpreter
+    command = ["idf.py", "fullclean"]
+    logger.info(f"Executing: {' '.join(command)} in {miner_repo_path}")
     try:
-        logger.info(f"Starting command: {' '.join(cmd)} in {miner_repo_path}")
-        process = subprocess.Popen(
-            cmd,
+        # Use subprocess.run directly, ensure cwd is passed, capture=False equivalent
+        process = subprocess.run(
+            command,
             cwd=miner_repo_path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            preexec_fn=os.setsid
+            env=idf_env,
+            check=True, # Raise CalledProcessError on failure
+            stdout=sys.stdout, # Send stdout directly to parent stdout
+            stderr=sys.stderr, # Send stderr directly to parent stderr
+            text=True
         )
-        
-        # Add to active processes
-        if process.pid:
-             active_build_processes[process.pid] = process
-             logger.debug(f"Added idf_clean process {process.pid} to active_build_processes.")
-
-        # Monitor process and check for cancellation
-        while True:
-            # Check for cancellation
-            if build_cancel_event.is_set():
-                logger.info("Cancellation requested during idf.py fullclean.")
-                if process and process.poll() is None:
-                    logger.warning(f"Attempting to kill idf_clean process group {process.pid}...")
-                    try:
-                        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-                        logger.info(f"idf_clean process group {process.pid} received SIGKILL.")
-                        try: process.wait(timeout=1)
-                        except subprocess.TimeoutExpired: pass
-                    except Exception as kill_err:
-                        logger.error(f"Error sending SIGKILL to idf_clean process group {process.pid}: {kill_err}")
-                        try:
-                            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-                            logger.warning(f"Sent SIGTERM to idf_clean process group {process.pid} as fallback.")
-                        except Exception as term_err:
-                            logger.error(f"Error sending SIGTERM fallback to idf_clean process group {process.pid}: {term_err}")
-                raise InterruptedError("Build cancelled during idf.py fullclean")
-
-            # Check if process finished
-            return_code = process.poll()
-            if return_code is not None:
-                logger.info(f"idf.py fullclean finished with exit code: {return_code}")
-                if return_code != 0:
-                    # Read remaining output for error logging
-                    stderr_output = process.stderr.read() if process.stderr else ""
-                    stdout_output = process.stdout.read() if process.stdout else ""
-                    logger.error(f"idf.py fullclean failed. Stderr:\n{stderr_output}")
-                    logger.error(f"idf.py fullclean failed. Stdout:\n{stdout_output}")
-                    raise subprocess.CalledProcessError(return_code, cmd, output=stdout_output, stderr=stderr_output)
-                break # Exit monitoring loop on successful completion
-            
-            # Optional: Read output lines non-blockingly if needed for logging?
-            # For clean, likely not necessary, just wait.
-            
-            time.sleep(0.5) # Poll interval
-            
-    except InterruptedError as e:
-         logger.warning(f"idf.py fullclean interrupted: {e}")
-         # Ensure event remains set
-         build_cancel_event.set()
-         raise # Re-raise to signal cancellation happened
+        logger.info("Clean completed successfully.")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"idf.py fullclean failed with exit code {e.returncode}.")
+        # Output should have gone directly to stderr, but log error just in case.
+        raise # Re-raise the exception to be caught by build_esp_miner
+    except FileNotFoundError:
+        logger.error(f"Error: Command '{command[0]}' or script '{command[1]}' not found.")
+        raise BuildFailedError(f"Clean command dependency not found.")
     except Exception as e:
-        logger.error(f"Error executing idf.py fullclean: {e}")
-        if not build_cancel_event.is_set(): # Avoid setting if already cancelled
-             build_cancel_event.set() # Set cancel event on other errors too?
-        raise # Re-raise other exceptions
-    finally:
-        # Clean up process from active list
-        if process and process.pid in active_build_processes and build_cancel_event.is_set():
-             del active_build_processes[process.pid]
+        logger.exception(f"An unexpected error occurred during idf fullclean: {e}")
+        raise BuildFailedError(f"Unexpected error during clean: {e}")
 
-def _run_idf_build(miner_repo_path: Path, commit_timestamp: str, verbose_stream: bool, progress_callback: Callable[[int, str], None] | None = None) -> str | None:
+def _run_idf_build(miner_repo_path: Path, commit_timestamp: str | None, verbose_stream: bool, progress_callback: Callable[[int, str], None] | None = None) -> str | None:
     """Runs the IDF build command (idf.py build). Uses version.txt implicitly."""
-    global active_build_processes, build_progress, current_tag, build_cancel_event
-    
-    # --- ADD CHECK: Check if cancelled before starting --- 
-    if build_cancel_event.is_set():
-        logger.warning("_run_idf_build called when build_cancel_event is set. Aborting.")
-        return None
-
-    # Reset progress, set tag (build_cancel_event is managed externally)
-    build_progress = 40
-    # current_tag should be set by the caller (build_esp_miner)
-    
     logger.info("Running the build process...")
-    miner_repo_path = Path(miner_repo_path)
-    build_dir = miner_repo_path / "build"
-    env_vars = {} # No extra env vars needed for version.txt
-    build_dir.mkdir(exist_ok=True)
-
-    logger.info(f"Verbose output streaming to UI: {verbose_stream}") 
-    # Add -v flag for more detailed compilation output including filenames
-    build_cmd = ["idf.py", "-v", "build"]
+    build_log_path = get_env_dir() / "logs" / "idf_build_output.log"
     
-    effective_env = {**os.environ, **env_vars} 
-    if 'IDF_TARGET' not in effective_env or effective_env['IDF_TARGET'] != 'esp32s3':
-        logger.info("Explicitly setting IDF_TARGET=esp32s3 for build.")
-        effective_env['IDF_TARGET'] = 'esp32s3'
-    logger.info(f"Executing IDF Build:")
-    logger.info(f"  Command: {' '.join(build_cmd)}")
-    logger.info(f"  Work Dir: {miner_repo_path}")
-    loggable_env = {**env_vars}
-    if 'IDF_TARGET' in effective_env:
-        loggable_env['IDF_TARGET'] = effective_env['IDF_TARGET']
-    logger.info(f"  Env (Selected): {loggable_env}")
+    # Start from parent env and remove known non-deterministic variables
+    build_env = os.environ.copy()
+    non_deterministic = []
+    for k in list(build_env.keys()):
+        if (k in ['HOME','USER','PWD','OLDPWD']
+            or k.startswith('TMP')
+            or k.startswith('TEMP')
+            or k.startswith('CI')
+            or k.startswith('GITHUB_')
+            or k.startswith('DOCKER_')
+            or k.startswith('SSH_')
+            or k.startswith('PYENV_')
+            or k in ['PYTHONPATH','PYTHONHOME']):
+            non_deterministic.append(k)
+    for k in non_deterministic:
+        build_env.pop(k, None)
+    # Ensure build-relevant variables are set
+    build_env['IDF_TARGET'] = 'esp32s3'
+    if commit_timestamp:
+        build_env['SOURCE_DATE_EPOCH'] = commit_timestamp
+    
+    # Execute idf.py build using the ESP-IDF Python interpreter for deterministic environment
+    command = [ESP_IDF_PYTHON, IDF_PY_SCRIPT]
+    if verbose_stream:
+        command.append("-v")
+    command.append("build")
+    logger.info(f"Executing: {' '.join(command)} in {miner_repo_path}")
 
-    logger.info(f"Starting build command: {' '.join(build_cmd)}")
+    # Log relevant env vars being used by the subprocess
+    logger.info(f"  Env (Selected): {{'IDF_TARGET': '{build_env.get('IDF_TARGET')}', 'SOURCE_DATE_EPOCH': '{build_env.get('SOURCE_DATE_EPOCH', 'N/A')}'}}")
+
+    # Compile Progress Tracking Variables
+    # (Initialize percentage markers for progress updates)
+    PREPARE_PERCENT = 5
+    CMAKE_PERCENT = 10
+    COMPILE_START_PERCENT = 15
+    COMPILE_END_PERCENT = 80 # Reserve % for linking, merging etc.
+    LINK_PERCENT = 85
+    MERGE_PERCENT = 90
+    FINALIZE_PERCENT = 95
+    
+    # State variables for tracking (can be accessed via nonlocal in stream_output)
+    last_compile_percent = CMAKE_PERCENT
+    total_files_to_compile = 0
+    files_compiled = 0
+    build_progress = CMAKE_PERCENT
+    build_error_occurred = False
+    error_output = ""
+    error_stderr = ""
+
+    # Initial progress update before starting the process
+    if progress_callback:
+        progress_callback(PREPARE_PERCENT, "Preparing ESP-IDF build environment...")
+
+    logger.info(f"Starting build command: {' '.join(command)}")
     process = None 
-    log_file_path = get_env_dir() / "logs" / IDF_BUILD_LOG_FILENAME
-    log_f = None # Initialize log_f to None
+    stdout_lines = []
+    stderr_lines = []
+    
     try:
-        # Ensure log directory exists
-        log_file_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        log_f = open(log_file_path, 'w') # Open the file handle here
-        log_f.write("--- Build Log (Streaming + Popen Fallback) ---\n")
         process = subprocess.Popen(
-            build_cmd,
+            command, 
             cwd=miner_repo_path,
-            env=effective_env,
+            env=build_env, 
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            preexec_fn=os.setsid
+            # Use preexec_fn=os.setsid to create a process group for cancellation
+            preexec_fn=os.setsid 
         )
         
         # Add process to active list immediately after creation
-        active_build_processes[process.pid] = process # Store process object for cancellation
-        # Give external observers time to see the active process before removal
-        if not verbose_stream:
-            time.sleep(0.05)  # increased delay for test visibility
-        # Flush active list for thread visibility
-        list(active_build_processes.keys())
-        logger.debug(f"Added process {process.pid} to active_build_processes. Current: {list(active_build_processes.keys())}")
-        
-        # In unit-test contexts the mocked build may finish extremely fast, causing the
-        # tracking entry to be added and removed before the test thread can observe it.
-        # Insert a very small delay (only when not verbose) to give external observers a
-        # chance to see the PID.
-        if not verbose_stream:
-            time.sleep(0.02)
-        
-        stdout_lines = []
-        stderr_lines = []
+        if process.pid:
+            active_build_processes[process.pid] = process # Store process object for cancellation
+            logger.debug(f"Added process {process.pid} to active_build_processes. Current: {list(active_build_processes.keys())}")
+            # Give external observers time to see the active process before potential quick removal in tests
+            time.sleep(0.05) 
+            list(active_build_processes.keys()) # Ensure dictionary is observed in multi-threaded context
+        else:
+            logger.warning("Popen process created without PID, cancellation may not work.")
 
-        # Regex for parsing Ninja progress [X/Y]
-        ninja_progress_re = re.compile(r"^\[(\d+)/(\d+)\]")
-        # Define progress percentage ranges
-        COMPILE_START_PERCENT = 50
-        COMPILE_END_PERCENT = 85
-        LINK_START_PERCENT = 85
-        LINK_END_PERCENT = 90
-        MERGE_PERCENT = 90
-        FINALIZE_PERCENT = 92
-        last_compile_percent = COMPILE_START_PERCENT # Track last reported compile % to avoid spam
-
-        def stream_output(pipe, output_list, log_prefix, stream_func):
-            nonlocal last_compile_percent # Allow modification of the outer variable
-            global build_progress, build_cancel_event # Update global build progress
+        # --- Output Streaming Logic (Defined inside to use nonlocal correctly) --- # 
+        def stream_output(pipe, output_list, log_prefix, stream_func, callback_func):
+            nonlocal last_compile_percent, total_files_to_compile, files_compiled, build_progress, build_error_occurred
             
-            if pipe:
-                # Handle mock pipes in tests that return empty string immediately
-                # to prevent hanging indefinitely waiting for readline() to return data
-                empty_count = 0
-                max_empty_allowed = 3
+            compile_progress_regex = re.compile(r"\s*\[(\d+)/(\d+)\]")
+            
+            for line in iter(pipe.readline, ''):
+                line = line.strip()
+                if not line: continue
+                output_list.append(line)
                 
-                for line in iter(pipe.readline, ''):
-                    # If we get empty data in tests, track it and break the loop
-                    # after a few consecutive empty lines
-                    if not line:
-                        empty_count += 1
-                        if empty_count >= max_empty_allowed:
-                            logger.debug("Multiple empty lines from pipe, assuming end of stream")
-                            break
-                        continue
-                    # Reset counter since we got content
-                    empty_count = 0
-                        
-                    # Check if build has been cancelled
-                    if build_cancel_event.is_set():
-                        logger.info("Build cancel event set during output streaming")
-                        break
-                        
-                    line = line.strip()
-                    if line:
-                        output_list.append(line)
-                        # Log raw lines differently based on verbose_stream
-                        if not verbose_stream: 
-                            stream_func(f"{log_prefix} {line}") # Log raw lines to console via passed func
-                        else:
-                            logger.debug(f"{log_prefix} {line}") # Log raw lines to file log only for WebUI
-                        
-                        try: log_f.write(f"{log_prefix} {line}\n")
-                        except Exception as e: print(f"Error writing to log file: {e}")
+                # Logging logic
+                if logger.isEnabledFor(logging.DEBUG) or verbose_stream:
+                     stream_func(f"{log_prefix} {line}")
+                elif log_prefix == "[Build STDERR]:": 
+                     logger.warning(f"{log_prefix} {line}")
 
-                        # --- Progress Callback Logic --- (Log key stages via stream_func ONLY for CLI)
-                        if progress_callback:
-                            # Check for CMake step
-                            if "Running cmake in directory" in line:
-                                message = "Running CMake configuration..."
-                                if not verbose_stream: stream_func(message) # Use stream_func for CLI progress
-                                progress_callback(45, message)
-                                build_progress = 45
-                                continue 
+                if not build_error_occurred:
+                    try:
+                        # --- Progress Parsing Logic --- 
+                        if "Running cmake in directory" in line:
+                            message = "Running CMake configuration..."
+                            if not verbose_stream: stream_func(message)
+                            if callback_func:
+                                callback_func(CMAKE_PERCENT, message)
+                            build_progress = CMAKE_PERCENT
+                            continue
                             
-                            # Check for Ninja start
-                            if "ninja: Entering directory" in line:
-                                message = "Starting compilation (Ninja)..."
-                                if not verbose_stream: stream_func(message) # Use stream_func for CLI progress
-                                progress_callback(COMPILE_START_PERCENT, message)
-                                build_progress = COMPILE_START_PERCENT
-                                continue
+                        match = compile_progress_regex.search(line)
+                        if match:
+                            files_compiled = int(match.group(1))
+                            # Always update total_files_to_compile from the current line
+                            total_files_to_compile = int(match.group(2)) 
+                            
+                            if total_files_to_compile > 0:
+                                compile_ratio = files_compiled / total_files_to_compile
+                                current_percent = int(COMPILE_START_PERCENT + (COMPILE_END_PERCENT - COMPILE_START_PERCENT) * compile_ratio)
+                                last_compile_percent = max(current_percent, last_compile_percent)
+                                # Now uses the updated total
+                                message = f"Compiling ({files_compiled}/{total_files_to_compile})..."
+                                if not verbose_stream: stream_func(message)
+                                if callback_func:
+                                    callback_func(last_compile_percent, message)
+                                build_progress = last_compile_percent
+                            continue
 
-                            # Check for Ninja progress [X/Y]
-                            match = ninja_progress_re.match(line)
-                            if match:
-                                current_step = int(match.group(1))
-                                total_steps = int(match.group(2))
-                                compile_progress = (current_step / total_steps) if total_steps > 0 else 0
-                                
-                                is_linking = "Linking CXX executable" in line
-                                if is_linking:
-                                    current_percent = LINK_START_PERCENT + int(compile_progress * (LINK_END_PERCENT - LINK_START_PERCENT))
-                                    message = f"Linking... [{current_step}/{total_steps}]"
-                                else:
-                                    # Determine compilation phase based on total steps and text
-                                    phase = "Core Libraries"
-                                    if "Generating" in line or ".h" in line:
-                                        phase = "Header Files" 
-                                    elif "main" in line.lower() or "app" in line.lower():
-                                        phase = "Application Files"
-                                    elif total_steps < 200:
-                                        phase = "Final Components"
-                                    
-                                    current_percent = COMPILE_START_PERCENT + int(compile_progress * (COMPILE_END_PERCENT - COMPILE_START_PERCENT))
-                                    message = f"Compiling {phase} [{current_step}/{total_steps}]"
+                        elif "Linking CXX executable esp-miner.elf" in line:
+                            message = "Linking executable..."
+                            if not verbose_stream: stream_func(message)
+                            if callback_func:
+                                callback_func(LINK_PERCENT, message)
+                            last_compile_percent = LINK_PERCENT
+                            build_progress = LINK_PERCENT
+                            continue
 
-                                # Only emit callback if percentage increased significantly (Web UI)
-                                if current_percent > last_compile_percent:
-                                    progress_callback(current_percent, message)
-                                    last_compile_percent = current_percent
-                                    build_progress = current_percent
-                                    # Log only the start of the linking phase to console for CLI
-                                    if is_linking and current_percent == LINK_START_PERCENT and not verbose_stream:
-                                         stream_func("Linking executable...") # Use stream_func for CLI progress
-                                continue 
+                        elif "esptool.py" in line and "Merging binaries" in line:
+                            message = "Merging binaries..."
+                            if not verbose_stream: stream_func(message)
+                            if callback_func:
+                                callback_func(MERGE_PERCENT, message)
+                            last_compile_percent = MERGE_PERCENT
+                            build_progress = MERGE_PERCENT
+                            continue
 
-                            # Check for specific linking messages (fallback)
-                            elif "Linking CXX executable" in line and last_compile_percent < LINK_END_PERCENT:
-                                message = "Linking executable..."
-                                current_percent = min(last_compile_percent + 1, LINK_END_PERCENT)
-                                if current_percent > last_compile_percent: 
-                                    if not verbose_stream: stream_func(message) # Use stream_func for CLI progress
-                                    progress_callback(current_percent, message)
-                                    last_compile_percent = current_percent
-                                    build_progress = current_percent
-                                continue
+                        elif "Project build complete." in line:
+                            message = "Build finalizing..."
+                            if not verbose_stream: stream_func(message)
+                            if callback_func:
+                                callback_func(FINALIZE_PERCENT, message)
+                            last_compile_percent = FINALIZE_PERCENT 
+                            build_progress = FINALIZE_PERCENT
+                            continue
+                            
+                        elif line.startswith("error:") or line.startswith("FAILED:") or "CMake Error at" in line:
+                             logger.warning(f"Potential build error detected: {line}")
+                             
+                    except Exception as e:
+                         # More robust error logging here
+                         try:
+                             err_msg = f"Error during build output parsing. Line: '{line}'. Error Type: {type(e).__name__}. Error: {e}"
+                             logger.error(err_msg, exc_info=False) 
+                         except Exception as log_err:
+                             logger.error(f"!!! Logging failed during exception handling: {log_err}")
+                         # Let exit code check determine final build failure status
 
-                            # Check for merging step
-                            elif "esptool.py" in line and "Merging binaries" in line:
-                                message = "Merging binaries..."
-                                if not verbose_stream: stream_func(message) # Use stream_func for CLI progress
-                                progress_callback(MERGE_PERCENT, message)
-                                last_compile_percent = MERGE_PERCENT
-                                build_progress = MERGE_PERCENT
-                                continue
+            pipe.close()
 
-                            # Check for build completion
-                            elif "Project build complete." in line:
-                                message = "Build finalizing..."
-                                if not verbose_stream: stream_func(message) # Use stream_func for CLI progress
-                                progress_callback(FINALIZE_PERCENT, message)
-                                last_compile_percent = FINALIZE_PERCENT 
-                                build_progress = FINALIZE_PERCENT
-                                continue
-                                
-                            # Check for specific errors (already logged via logger.warning)
-                            elif line.startswith("error:") or line.startswith("FAILED:"):
-                                 logger.warning(f"Potential build error in STDOUT: {line}") # Log warnings always
-
-                pipe.close()
-
-        stdout_thread = threading.Thread(target=stream_output, args=(process.stdout, stdout_lines, "[Build STDOUT]:", logger.info))
-        stderr_thread = threading.Thread(target=stream_output, args=(process.stderr, stderr_lines, "[Build STDERR]:", logger.warning))
+        # Pass progress_callback explicitly as 'callback_func' argument to the thread target
+        stdout_thread = threading.Thread(target=stream_output, args=(process.stdout, stdout_lines, "[Build STDOUT]:", logger.info, progress_callback))
+        stderr_thread = threading.Thread(target=stream_output, args=(process.stderr, stderr_lines, "[Build STDERR]:", logger.warning, progress_callback))
         stdout_thread.start()
         stderr_thread.start()
         
-        # --- MAIN MONITOR LOOP ---
-        while True:
-            # If cancellation has been requested, break so cleanup logic can run.
-            if build_cancel_event.is_set():
-                break
+        # Wait for threads to finish
+        stdout_thread.join()
+        stderr_thread.join()
 
-            # If the subprocess has finished naturally, break as well.
-            if process and process.poll() is not None:
-                break
-
-            # Only break early on threads finishing when verbose_stream is True (e.g., Web UI).
-            # Prevent premature exit in CLI mode until cancellation or process completion.
-            if verbose_stream and not stdout_thread.is_alive() and not stderr_thread.is_alive():
-                break
-
-            # Short sleep to avoid busy-looping; do not block on thread joins here –
-            # we will join them after the loop.
-            time.sleep(0.05)
-
-        # After exiting the loop, ensure output threads are drained.
-        stdout_thread.join(timeout=1.0)
-        stderr_thread.join(timeout=1.0)
+        # Wait for the process to terminate and get the exit code
+        process.wait()
+        return_code = process.returncode
+        logger.info(f"idf.py build finished with exit code: {return_code}")
         
-        # Close the file handle explicitly after streaming is done (or interrupted)
-        if log_f:
-            log_f.close()
-            log_f = None # Reset after closing
-            
-        # Wait for process to complete if it hasn't already
-        if process:
-            try:
-                return_code = process.poll()
-                if return_code is None:
-                    # Process still running, wait with timeout
-                    process.wait(timeout=5)
-                    return_code = process.returncode
-                else:
-                    # Process already completed
-                    pass
-            except subprocess.TimeoutExpired:
-                logger.warning("Process wait timeout expired, forcing termination")
-                process.kill()
-                return_code = -9  # SIGKILL
-        else:
-            return_code = 1  # Generic error if process wasn't created
-            
-        # Only write final status if build wasn't cancelled and log file is valid
-        if not build_cancel_event.is_set() and log_f and not log_f.closed:
-             try:
-                 log_f.write(f"\n--- Build Command Finished (Exit Code: {return_code}) ---\n")
-                 logger.info(f"Build command finished with exit code: {return_code}")
-             except Exception as write_err:
-                  logger.error(f"Error writing final status to log file: {write_err}")
-        elif build_cancel_event.is_set():
-             logger.info(f"Skipping final log write because build was cancelled.")
+        # Consolidate output for logging and potential error reporting
+        full_stdout = "\n".join(stdout_lines)
+        full_stderr = "\n".join(stderr_lines)
 
-        # Cleanup: remove from active list only if cancellation occurred (tests rely on this timing)
-        if process and process.pid in active_build_processes and build_cancel_event.is_set():
-            logger.debug(f"Removing process {process.pid} from active_build_processes in finally block.")
-            del active_build_processes[process.pid]
-            
-        # Reset build progress (event state persists until cleared)
-        build_progress = 0 
-        
-        # If build was cancelled or terminated, return None
-        if build_cancel_event.is_set() or (return_code and (return_code == -15 or return_code == -9)):  # SIGTERM or SIGKILL
-            logger.info("Build was cancelled or terminated, returning None.")
-            # Ensure event remains set if cancellation was the cause
-            build_cancel_event.set() # Make sure it stays set
-            return None
-        
+        # Log the full output to the dedicated log file
+        try:
+            with open(build_log_path, 'w') as f:
+                f.write("--- STDOUT ---\n")
+                f.write(full_stdout)
+                f.write("\n\n--- STDERR ---\n")
+                f.write(full_stderr)
+            logger.info(f"Saved full idf.py build log to {build_log_path}")
+        except Exception as log_e:
+            logger.error(f"Failed to write idf build log to {build_log_path}: {log_e}")
+
+        # Check the return code AFTER joining threads and logging
         if return_code != 0:
-            logger.error("Build process failed.")
-            if stderr_lines:
-                logger.error("Last few error lines:")
-                for err_line in stderr_lines[-10:]: logger.error(err_line)
-            error_output = "\n".join(stdout_lines)
-            error_stderr = "\n".join(stderr_lines)
-            raise subprocess.CalledProcessError(return_code, build_cmd, output=error_output, stderr=error_stderr)
-        return "\n".join(stdout_lines) 
+            build_error_occurred = True
+            error_output = full_stdout # Store full output for error context
+            error_stderr = full_stderr
+            logger.error(f"Build process failed with exit code {return_code}.")
+            last_stderr = "\n".join(stderr_lines[-10:]) # Keep logging last stderr lines
+            logger.error(f"Last stderr lines:\n{last_stderr}")
+            raise subprocess.CalledProcessError(return_code, command, output=error_output, stderr=error_stderr)
+
+        # If successful, report 100% (if callback exists)
+        if progress_callback:
+            progress_callback(100, "Build process completed successfully.")
+        
+        return str(build_log_path) # Return path to log file
+
     except subprocess.CalledProcessError as e:
-        logger.critical(f"Build command failed. Check log file: {log_file_path}")
-        # Reset build progress (event state persists until cleared)
-        build_progress = 0
-        # Clean up process list
-        if process and process.pid in active_build_processes and build_cancel_event.is_set():
-            del active_build_processes[process.pid]
-        # If build was manually cancelled, don't propagate the error
-        if build_cancel_event.is_set():
-            logger.info("Build was cancelled, suppressing CalledProcessError")
-            return None
-        raise 
+        logger.critical(f"Build command failed. Check log file: {build_log_path}")
+        raise # Re-raise the CaughtProcessError
+        
+    except FileNotFoundError:
+        logger.error(f"Error: Command '{command[0]}' or script '{command[1]}' not found.")
+        raise BuildFailedError(f"Build command dependency not found.")
+
     except Exception as e:
-        logger.exception(f"An unexpected error occurred running the build: {e}")
-        # Reset build progress (event state persists until cleared)
-        build_progress = 0
+        logger.exception(f"An unexpected error occurred during the build: {e}")
         if process and process.poll() is None:
-            logger.warning("Terminating build process due to unexpected error.")
-            process.terminate()
-            # Clean up process list
-            if process and process.pid in active_build_processes and build_cancel_event.is_set():
-                del active_build_processes[process.pid]
-        # Check if cancel event is set, if so, return None tuple
-        if build_cancel_event.is_set():
-            logger.warning("Returning None tuple from generic exception handler due to cancel event.")
-            return None, None, None, None, None
-        raise # Otherwise, re-raise the original exception
-    finally:
-        # --- Add explicit file closing in finally block ---
-        if log_f: # Check if log_f was opened and not already closed
             try:
-                log_f.close()
-                logger.debug("Log file handle closed in finally block.")
-            except Exception as e:
-                logger.error(f"Error closing log file in finally block: {e}")
-        # Always ensure build progress is reset
-        # The cancel event state persists until explicitly cleared
-        build_progress = 0 
-        # Cleanup: remove from active list only if cancellation occurred (tests rely on this timing)
-        if process and process.pid in active_build_processes and build_cancel_event.is_set():
-            del active_build_processes[process.pid]
+                process.terminate()
+                process.wait(timeout=5)
+            except Exception as term_e:
+                logger.error(f"Error terminating build process: {term_e}")
+        raise BuildFailedError(f"Unexpected build error: {e}")
+
+    finally:
+        # Ensure process is removed from tracking upon completion or error/cancellation
+        if process and process.pid and process.pid in active_build_processes:
+            logger.debug(f"Removing process {process.pid} from active_build_processes in finally block.")
+            try:
+                del active_build_processes[process.pid]
+            except KeyError:
+                logger.warning(f"Process {process.pid} already removed from tracking.")
+            except Exception as del_err:
+                logger.error(f"Error removing process {process.pid} from tracking: {del_err}")
+        
+        # Ensure streams are closed if process exists
+        if process:
+            if process.stdout: process.stdout.close()
+            if process.stderr: process.stderr.close()
 
 def _verify_build_artifacts(build_dir: Path, progress_callback: Callable[[int, str], None] | None = None):
     logger.info("--- Verifying Build Artifacts --- ")
@@ -586,121 +493,62 @@ def _find_build_outputs(miner_repo_path: Path, build_dir: Path, progress_callbac
         logger.info(f"Found flasher_args.json for analysis: {flasher_args_path}")
     return partition_csv_path, flasher_args_path
 
-def build_esp_miner(miner_repo_path: Path, selected_tag: str, verbose_stream: bool, progress_callback: Callable[[int, str], None] | None = None) -> tuple[Path, str | None, Path | None, Path | None, str | None]:
-    """Orchestrates the ESP-Miner firmware build process using Git."""
-    global current_tag, build_progress, build_cancel_event, is_building
-    # Indicate build has started and clear any previous cancellation
-    is_building = True
-    build_cancel_event.clear()
+def build_esp_miner(miner_repo_path: Path, selected_tag: str, verbose_stream: bool, progress_callback: Optional[Callable[[int, str], None]] = None) -> Tuple[Path, str, Path, Path, str]:
+    """Main function to orchestrate the build process for a specific tag."""
+    logger.info(f"\n--- Starting Build Phase --- ") 
+    logger.info(f"--- Build Orchestration for Tag: {selected_tag} ---")
+    global build_start_time
+    build_start_time = time.time()
+    
+    miner_repo_path = Path(miner_repo_path)
+    build_dir = miner_repo_path / "build"
+    partition_csv_path = miner_repo_path / "partitions.csv"
+    flasher_args_path = build_dir / "flasher_args.json"
+
+    # --- Pre-build Steps --- 
     try:
-        # Update global variables for status tracking
-        current_tag = selected_tag
-        build_progress = 0
-        
-        if not verbose_stream: logger.info(f"--- Build Orchestration for Tag: {selected_tag} ---")
-        else: logger.debug(f"--- Build Orchestration for Tag: {selected_tag} ---")
+        # 1. Clean previous artifacts if they exist
+        if progress_callback: progress_callback(10, "Cleaning previous build artifacts...")
+        _run_idf_clean(miner_repo_path)
 
-        if not selected_tag:
-            error_msg = "Empty tag provided to build_esp_miner"
-            logger.error(error_msg)
-            if progress_callback: progress_callback(0, f"Error: {error_msg}")
-            raise ValueError(error_msg)
-        
-        if build_cancel_event.is_set():
-            logger.info("Build cancelled before Git operations in build_esp_miner.")
-            return None, None, None, None, None
+        # 2. Prepare source code (checkout tag, update submodules, write version.txt)
+        # Now also returns commit_timestamp
+        commit_hash, expected_version, commit_timestamp = _prepare_source_code(miner_repo_path, selected_tag, progress_callback)
 
-        # Explicitly checkout tag as part of build orchestration
-        if progress_callback: progress_callback(1, f"Checkout tag {selected_tag}...")
-        checkout_tag(miner_repo_path, selected_tag, progress_callback)
+        # 3. Run the IDF build process
+        if progress_callback: progress_callback(40, "Starting ESP-IDF build process...")
+        # Pass commit_timestamp to _run_idf_build
+        build_output_log = _run_idf_build(miner_repo_path, commit_timestamp, verbose_stream, progress_callback)
+        
+        # Check if build was cancelled during _run_idf_build (it returns None)
+        if build_output_log is None:
+             logger.warning("Build process was cancelled or terminated early.")
+             raise BuildFailedError("Build Cancelled") # Raise specific error
 
-        # --- Step 1: Clean Build Environment (Optional but recommended before checkout) ---
-        message = "Cleaning previous build artifacts (idf.py fullclean)..."
-        if not verbose_stream: logger.info(message)
-        if progress_callback: progress_callback(2, message)
-        try:
-            # Run clean BEFORE checkout to avoid issues with dirty state
-            _run_idf_clean(miner_repo_path, progress_callback) 
-            if progress_callback: progress_callback(4, "Clean complete.")
-        except InterruptedError:
-            logger.warning("Build cancelled during clean step.")
-            return None, None, None, None, None
-        except Exception as e:
-            logger.error(f"idf.py fullclean failed: {e}")
-            if progress_callback: progress_callback(0, f"Error: Clean failed - {e}")
-            raise # Re-raise critical errors
+        # --- Post-build Steps --- 
+        # 4. Verify essential build artifacts exist
+        if progress_callback: progress_callback(96, "Verifying build artifacts...")
+        _verify_build_artifacts(build_dir, progress_callback)
         
-        # --- Step 2: Prepare Source Code (Checkout Tag, Submodules, version.txt) ---
-        message = f"Preparing source code for tag: {selected_tag}..."
-        if not verbose_stream: logger.info(message)
-        if progress_callback: progress_callback(5, message)
-        try:
-            # This now handles checkout, submodules, and version.txt creation
-            commit_hash, expected_version = _prepare_source_code(miner_repo_path, selected_tag, progress_callback)
-            if not commit_hash or not expected_version:
-                # Handle potential cancellation within _prepare_source_code if needed
-                logger.error("Failed to prepare source code (commit hash or version missing).")
-                if build_cancel_event.is_set():
-                    logger.info("Source code preparation cancelled.")
-                    return None, None, None, None, None
-                else:
-                    raise RuntimeError("Source code preparation failed unexpectedly.")
-                
-            # Ensure version includes suffix
-            if expected_version and not expected_version.endswith('-sovereign'):
-                expected_version = expected_version + '-sovereign'
-            
-            if progress_callback: progress_callback(35, f"Source ready at commit {commit_hash[:7]}.")
-            logger.info(f"Source code prepared. Commit: {commit_hash}, Expected Version: {expected_version}")
-        except InterruptedError:
-            logger.warning("Build cancelled during source code preparation.")
-            return None, None, None, None, None
-        except Exception as e:
-            logger.exception(f"Error preparing source code: {e}")
-            if progress_callback: progress_callback(0, f"Error: Source prep failed - {e}")
-            raise
-        
-        # --- Step 3: Run IDF Build ---
-        message = "Starting ESP-IDF build process..."
-        if not verbose_stream: logger.info(message)
-        # Progress callback handled within _run_idf_build (starts around 40%)
-        try:
-            build_output = _run_idf_build(miner_repo_path, commit_hash, verbose_stream, progress_callback)
-            if build_output is None: # Indicates cancellation or failure within _run_idf_build
-                if build_cancel_event.is_set():
-                     logger.warning("Build cancelled during idf.py build.")
-                     return None, None, None, None, None
-                else:
-                     # Failure already logged by _run_idf_build
-                     logger.error("idf.py build failed (returned None, cancel not set).")
-                     raise RuntimeError("Build process failed.")
-            if progress_callback: progress_callback(95, "IDF build complete.")
-        except InterruptedError: # Should be handled by _run_idf_build returning None
-             logger.warning("Build cancelled during idf.py build (caught InterruptedError).")
-             return None, None, None, None, None
-        except Exception as e:
-            logger.exception(f"Build process failed: {e}")
-            if progress_callback: progress_callback(0, f"Error: Build failed - {e}")
-            raise
+        # Log success and return necessary paths/info
+        logger.info(f"ESP-Miner build for tag '{selected_tag}' completed successfully.")
+        return build_dir, commit_hash, partition_csv_path, flasher_args_path, expected_version
 
-        # --- Step 4: Verify and Analyze Build Output ---
-        build_dir = miner_repo_path / "build"
-        try:
-            _verify_build_artifacts(build_dir, progress_callback)
-            partition_csv_path, flasher_args_path = _find_build_outputs(miner_repo_path, build_dir, progress_callback)
-            # analyze_build_output(build_dir, flasher_args_path, partition_csv_path) # Call analysis later if needed
-            if progress_callback: progress_callback(100, "Build finished successfully.")
-        except Exception as e:
-            logger.exception(f"Post-build verification/analysis failed: {e}")
-            if progress_callback: progress_callback(0, f"Error: Post-build failed - {e}")
-            raise
-        
-        logger.info(f"Build successful. Returning: BuildDir={build_dir}, BuildOutput={build_output}, Partition={partition_csv_path}, FlasherArgs={flasher_args_path}, Version={expected_version}")
-        # Note: commit_hash isn't currently used by caller, returning build_dir instead of None
-        return build_dir, build_output, partition_csv_path, flasher_args_path, expected_version
-    finally:
-        # Reset building flag on any exit path
-        is_building = False
+    except BuildFailedError as bfe:
+        logger.error(f"BuildFailedError occurred: {bfe}")
+        raise # Re-raise BuildFailedError
+    except subprocess.CalledProcessError as cpe:
+        logger.error(f"A build command failed with exit code {cpe.returncode}.")
+        logger.error(f"Command: {' '.join(cpe.cmd)}")
+        # Log stderr if available and not too long
+        if cpe.stderr:
+            stderr_preview = cpe.stderr.strip().split('\n')[ -10:] # Last 10 lines
+            logger.error(f"Stderr (last {len(stderr_preview)} lines):\n" + '\n'.join(stderr_preview))
+        raise BuildFailedError(f"Build command failed (Exit Code: {cpe.returncode}).") from cpe
+    except Exception as e:
+        # Catch other potential errors during orchestration
+        logger.exception(f"An unexpected error occurred during build orchestration: {e}")
+        raise BuildFailedError(f"Unexpected build orchestration error: {e}") from e
 
 # --- Analysis Helpers ---
 

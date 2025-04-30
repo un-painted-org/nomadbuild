@@ -153,6 +153,20 @@ Template placeholders like %%ATTRIBUTIONS_HTML%% are replaced during processing.
                 </div>
             </section>
             
+            <!-- Build Cancelled Modal -->
+            <div id="build-cancel-modal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-body" style="text-align:center">
+                        <img src="/assets/cancel.png" alt="Cancelled" style="max-width:200px;margin-bottom:20px;" />
+                        <h3>Build Cancelled</h3>
+                        <p>Your build process has been cancelled. You can start a new build when ready.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="primary-button" id="close-build-cancel" onclick="document.getElementById('build-cancel-modal').classList.add('hidden')">OK</button>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Flash Section -->
             <section id="section-flash" class="content-section">
                 <div class="section-header">
@@ -212,6 +226,19 @@ Template placeholders like %%ATTRIBUTIONS_HTML%% are replaced during processing.
                                 </div>
                             </div>
                             <pre id="flash-output" class="output-content"></pre>
+                        </div>
+                    </div>
+                    <!-- Flash Success Modal -->
+                    <div id="flash-success-modal" class="modal hidden">
+                        <div class="modal-content">
+                            <div class="modal-body" style="text-align:center">
+                                <img src="/assets/victory.png" alt="Success" style="max-width:200px;margin-bottom:20px;" />
+                                <h3>Flash Successful!</h3>
+                                <p>Your device has been updated successfully.</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="primary-button" id="close-flash-success" onclick="document.getElementById('flash-success-modal').classList.add('hidden')">OK</button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -37,6 +37,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function initializePage() {
     console.log('Initializing page...');
+    // Remove any previous build cancellation banner on page initialization
+    const existingCancelBanner = document.getElementById('cancel-banner');
+    if (existingCancelBanner) existingCancelBanner.remove();
     
     // Make sure the attribution modal is hidden initially
     const attributionModal = document.getElementById('attribution-modal');
@@ -120,6 +123,9 @@ function initializeSocket() {
     });
     
     socket.on('build_status', function(data) {
+        // Always clear any existing build cancellation banner before handling status updates
+        const existingCancelBanner = document.getElementById('cancel-banner');
+        if (existingCancelBanner) existingCancelBanner.remove();
         // Log ALL received statuses
         console.log('Received build_status event:', data.status, data);
         
@@ -139,6 +145,9 @@ function initializeSocket() {
 
         if (data.status === 'started') {
             buildInProgress = true;
+            // Remove any existing build cancellation banner on new build start
+            const cancelBanner = document.getElementById('cancel-banner');
+            if (cancelBanner) cancelBanner.remove();
             // Reset spinner state (remove previous cancelled/completed icons)
             const spinnerElem = document.querySelector('.progress-spinner');
             if (spinnerElem) {
@@ -307,21 +316,8 @@ function initializeSocket() {
             updateClearButtonText();
              console.log('[Build Complete Handler] UI updates finished.');
         } else if (data.status === 'cancelled') {
-            // Handle build cancellation
+            // Handle build cancellation (inline banner removed, modal provides feedback)
             buildInProgress = false;
-
-            // Show inline cancellation banner
-            const buildProgressSection = document.getElementById('build-progress');
-            if (buildProgressSection) {
-                // Remove existing banner if any
-                const oldBanner = document.getElementById('cancel-banner');
-                if (oldBanner) oldBanner.remove();
-                const banner = document.createElement('div');
-                banner.id = 'cancel-banner';
-                banner.className = 'alert alert-warning';
-                banner.textContent = `Build cancelled at ${data.progress || buildProgress}%`;
-                buildProgressSection.parentNode.insertBefore(banner, buildProgressSection);
-            }
 
             // Update progress status to show cancellation
             if (progressStatusElem) {
@@ -373,6 +369,9 @@ function initializeSocket() {
             
             messageHandled = true;
             hideFlashProgress(); // Also hide flash progress on cancel
+            // Show build cancelled modal
+            const cancelModal = document.getElementById('build-cancel-modal');
+            if (cancelModal) cancelModal.classList.remove('hidden');
         } else if (data.status === 'failed') {
             buildInProgress = false;
             updateBuildProgress(0, 'Build failed'); // Update main status
@@ -516,6 +515,12 @@ function initializeSocket() {
             console.log(`Server ping response: ${latency}ms`);
         }
     });
+
+    socket.on('clear_log', function() {
+        // Remove any existing build cancellation banner when logs are cleared
+        const cancelBanner = document.getElementById('cancel-banner');
+        if (cancelBanner) cancelBanner.remove();
+    });
 }
 
 function setupEventListeners() {
@@ -577,6 +582,9 @@ function setupEventListeners() {
     if (buildLatestCard) {
         console.log('Adding click listener to build-latest card');
         buildLatestCard.addEventListener('click', function() {
+            // Remove any existing build cancellation banner when returning to cards
+            const existingCancelBanner = document.getElementById('cancel-banner');
+            if (existingCancelBanner) existingCancelBanner.remove();
             console.log('Build latest card clicked');
             selectedTag = "latest"; // Explicitly set tag indicator for latest build
             showBuildOptions();
@@ -587,6 +595,9 @@ function setupEventListeners() {
     if (buildTagCard) {
         console.log('Adding click listener to build-tag card');
         buildTagCard.addEventListener('click', function() {
+            // Remove any existing build cancellation banner when returning to cards
+            const existingCancelBanner = document.getElementById('cancel-banner');
+            if (existingCancelBanner) existingCancelBanner.remove();
             console.log('Build tag card clicked');
             showTagSelection();
         });
@@ -627,6 +638,9 @@ function setupEventListeners() {
     const clearLogBtn = document.getElementById('clear-log-btn');
     if (clearLogBtn) {
         clearLogBtn.addEventListener('click', function() {
+            // Remove any existing build cancellation banner
+            const existingCancelBanner = document.getElementById('cancel-banner');
+            if (existingCancelBanner) existingCancelBanner.remove();
             if (buildInProgress) {
                 // If a build is in progress, show confirmation dialog
                 if (confirm("Are you sure you want to cancel the current build?")) {
@@ -660,6 +674,9 @@ function setupEventListeners() {
     
     if (newBuildBtn) {
         newBuildBtn.addEventListener('click', function() {
+            // Remove any existing build cancellation banner
+            const existingCancelBanner = document.getElementById('cancel-banner');
+            if (existingCancelBanner) existingCancelBanner.remove();
             // Reset build section UI
             document.getElementById('build-complete').classList.add('hidden');
             document.getElementById('build-progress').classList.add('hidden');
@@ -735,11 +752,35 @@ function setupEventListeners() {
         });
     }
 
+    // Flash Success modal close handler
+    const closeFlashSuccessBtn = document.getElementById('close-flash-success');
+    if (closeFlashSuccessBtn) {
+        closeFlashSuccessBtn.addEventListener('click', function() {
+            const flashSuccessModal = document.getElementById('flash-success-modal');
+            if (flashSuccessModal) flashSuccessModal.classList.add('hidden');
+        });
+    }
+
+    // Build Cancelled modal close handler
+    const closeBuildCancelBtn = document.getElementById('close-build-cancel');
+    if (closeBuildCancelBtn) {
+        closeBuildCancelBtn.addEventListener('click', function() {
+            const cancelModal = document.getElementById('build-cancel-modal');
+            if (cancelModal) cancelModal.classList.add('hidden');
+            // Remove the inline cancellation banner if present
+            const cancelBanner = document.getElementById('cancel-banner');
+            if (cancelBanner) cancelBanner.remove();
+        });
+    }
+
     console.log('Event listeners set up complete');
 }
 
 // Navigation functions
 function showSection(sectionId) {
+    // Remove any existing build cancellation banner when switching sections
+    const existingCancelBanner = document.getElementById('cancel-banner');
+    if (existingCancelBanner) existingCancelBanner.remove();
     console.log(`Attempting to show section: ${sectionId}`);
     
     // Debug info - list all sections
@@ -813,6 +854,9 @@ function showSection(sectionId) {
 
 // Build functions
 function showTagSelection() {
+    // Remove any existing build cancellation banner when selecting a tag
+    const existingCancelBanner = document.getElementById('cancel-banner');
+    if (existingCancelBanner) existingCancelBanner.remove();
     console.log('Showing tag selection');
     const tagSelection = document.getElementById('tag-selection');
     if (tagSelection) {
@@ -822,10 +866,15 @@ function showTagSelection() {
 }
 
 function showBuildOptions() {
+    // Remove any existing build cancellation banner
+    const existingCancelBanner = document.getElementById('cancel-banner');
+    if (existingCancelBanner) existingCancelBanner.remove();
+    // Hide previous build progress and completion to clear any old banner or state
+    const progressSection = document.getElementById('build-progress');
+    if (progressSection) progressSection.classList.add('hidden');
+    const completeSection = document.getElementById('build-complete');
+    if (completeSection) completeSection.classList.add('hidden');
     console.log('Showing build options');
-    // Hide tag selection if it's visible
-    hideTagSelection();
-    
     // Show build options
     const buildOptions = document.getElementById('build-options');
     if (buildOptions) {
@@ -937,6 +986,9 @@ function selectTag(tag) {
 
 function startBuild() {
     console.log(`Starting build with tag: ${selectedTag}`);
+    // Remove previous build cancellation banner if present
+    const oldCancelBanner = document.getElementById('cancel-banner');
+    if (oldCancelBanner) oldCancelBanner.remove();
 
     if (!selectedTag) {
         console.error('No tag selected');
@@ -1002,6 +1054,9 @@ function startBuild() {
 }
 
 function cancelBuild() {
+    // Remove any existing build cancellation banner
+    const existingCancelBanner = document.getElementById('cancel-banner');
+    if (existingCancelBanner) existingCancelBanner.remove();
     console.log('Cancel button clicked. Resetting UI to initial state.');
     
     // If a build is actually in progress, try to cancel it on the backend
@@ -1407,8 +1462,14 @@ function updateFlashProgress(data) {
         statusElem.textContent = 'Flash Complete';
         messageElem.textContent = data.message || 'Firmware flashed successfully!';
         spinnerElem.style.display = 'none'; // Hide spinner
-        // Optionally show a success icon
-        // spinnerElem.innerHTML = '<svg>...</svg>'; 
+        // Ensure progress bar fills to 100%
+        if (progressBarContainer && progressBar) {
+            progressBarContainer.style.display = 'block';
+            progressBar.style.width = '100%';
+        }
+        // Show flash success modal
+        const successModal = document.getElementById('flash-success-modal');
+        if (successModal) successModal.classList.remove('hidden');
         showToast('Flash completed successfully!', 'success');
         if (flashButton) flashButton.disabled = false; // Re-enable button
 

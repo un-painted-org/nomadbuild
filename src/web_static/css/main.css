@@ -2243,4 +2243,9 @@ select:focus, input:focus, textarea:focus {
 .howto-section > ul:last-of-type,
 .howto-section > ol:last-of-type {
     margin-bottom: 0.5rem;
+}
+
+/* Hide inline build cancellation banner; use modal instead */
+#cancel-banner {
+    display: none !important;
 } 
