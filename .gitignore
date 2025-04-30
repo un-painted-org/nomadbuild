@@ -147,3 +147,5 @@ archive/     # ignore archived scripts and resources
 
 # Keep project tracking files out of main branch
 backlog.md
+# SpecStory explanation file
+.specstory/.what-is-this.md
