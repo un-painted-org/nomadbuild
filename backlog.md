@@ -100,13 +100,26 @@ YOU ARE MARKING NOTHING AS COMPLETED YOURSELF UNLESS TOLD OTHERWISE. YOU MUST NO
     - Documentation in `docs/USAGE.md` is updated to describe cancellation behavior.
     - Unit/integration tests added to cover the new UI states and messages.
 
-80. **Improve Build Reproducibility by Pinning Dependencies** - *Not Started*
-    - **Goal:** Ensure builds are as deterministic as possible by pinning all external dependencies to specific versions.
-    - **Tasks:**
-      - **System Packages:** Identify specific versions of APT packages (`ca-certificates`, `curl`, `gnupg`, `pandoc`, `perl`, `python3-requests`, `python3-pip`, `python3-venv`, `nodejs`) available in the base `espressif/idf:v5.4` image and pin them in the `Dockerfile` using `package=version` syntax.
-      - **Python Package (`requests`):** Pin the `requests` package in the `Dockerfile`'s `pip install` command to a specific version (e.g., `requests==2.31.0`).
-      - **Verification:** Rebuild the Docker image and confirm the build succeeds with pinned versions.
-      - **Documentation:** Briefly mention the improved pinning in `docs/REPRODUCIBILITY_NOTES.md`.
+80. **Pin base image & toolchain** - *Not Started*
+    - Replace `espressif/idf:v5.4.1` with a digest-pinned image (`@sha256`) and pin exact gcc, CMake, and binutils versions used by ESP-IDF.
+
+81. **Vendor IDF components offline** - *Not Started*
+    - Vendor all external IDF components (via lockfile or submodule) to eliminate network fetch variations.
+
+82. **Normalize timestamps** - *Not Started*
+    - Inject `SOURCE_DATE_EPOCH` into CMake builds and reset all built artifact mtimes to that epoch post-build.
+
+83. **Audit sdkconfig determinism** - *Not Started*
+    - Scan `sdkconfig` and `sdkconfig.defaults` for absolute paths or host-specific settings; canonicalize and sort config entries.
+
+84. **Canonicalize binaries** - *Not Started*
+    - Strip debug symbols and reorder ELF sections; sort partition maps to guarantee identical binary layout.
+
+85. **Embed tool metadata** - *Not Started*
+    - Record ESP-IDF commit, Python interpreter, and toolchain versions into `build_info.json` and expose in Web UI.
+
+86. **Reproducibility CI tests** - *Not Started*
+    - Enhance `scripts/repro.sh` to run CI-level double builds in clean containers and diff artifacts, failing on mismatches.
 
 ### Medium Priority
 
