@@ -91,14 +91,15 @@ else
     echo "Docker image '$IMAGE_NAME' found locally."
 fi
 
+# Verify base image digest matches the pinned configuration
+bash "$SCRIPT_DIR/verify_base_image_digest.sh" "$PROJECT_ROOT/build/toolchain_pins.conf"
+
 echo "--- Running Pytest ---"
 echo "Test path: $TEST_PATH"
 
 # Pytest and dependencies are installed globally via Dockerfile
 # Clear .pyc files and run pytest targeting the correct directory with ESP-IDF environment
-CMD_INSIDE_CONTAINER="source \$IDF_PATH/export.sh > /dev/null 2>&1 && source /opt/venv/bin/activate && export PYTHONDONTWRITEBYTECODE=1 && find /app -name '*.pyc' -delete \
-    && python3 -m pip install -q pytest-sugar \
-    && /opt/venv/bin/python -B -m pytest -q --disable-warnings --tb=short --durations=10 --color=yes --cache-clear $TEST_PATH"
+CMD_INSIDE_CONTAINER="source \$IDF_PATH/export.sh > /dev/null 2>&1 && source /opt/venv/bin/activate && export PYTHONDONTWRITEBYTECODE=1 && find /app -name '*.pyc' -delete && bash /app/scripts/verify_pinned_versions.sh /app/build/apt_pins.conf && bash /app/scripts/verify_toolchain_versions.sh /app/build/toolchain_pins.conf && python3 -m pip install -q pytest-sugar && /opt/venv/bin/python -B -m pytest -q --disable-warnings --tb=short --durations=10 --color=yes --cache-clear \$TEST_PATH"
 
 # Run the Docker container with bash entrypoint
 # Mount the current directory to /app to ensure tests run against local code

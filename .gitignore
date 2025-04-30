@@ -8,8 +8,6 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
-dist/
 downloads/
 eggs/
 *.egg-info/
@@ -147,3 +145,7 @@ archive/     # ignore archived scripts and resources
 # SpecStory explanation file
 .specstory/.what-is-this.md
 backlog.md
+
+# Un-ignore build pin configuration files
+!build/apt_pins.conf
+!build/toolchain_pins.conf

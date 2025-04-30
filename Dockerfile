@@ -1,6 +1,7 @@
 # Use the official ESP-IDF image matching the version used in ESP-Miner devcontainer
 # Reference: https://github.com/bitaxeorg/ESP-Miner/blob/master/.devcontainer/Dockerfile
-FROM espressif/idf:v5.4.1
+# BUT with a sha256 hash to make sure it does not change
+FROM espressif/idf@sha256:6b4adab7b282e9261a154d7130fb4945a3c28bd35c2e914357c2f522643cb92a
 
 # Set environment variables to non-interactive (avoids prompts during apt-get)
 ENV DEBIAN_FRONTEND=noninteractive
@@ -85,6 +86,10 @@ WORKDIR /app
 COPY src/ /app/src/
 COPY scripts/ /app/scripts/
 COPY docs/ /app/docs/
+
+# Copy pin configuration files for verification inside the container
+COPY build/apt_pins.conf /app/build/apt_pins.conf
+COPY build/toolchain_pins.conf /app/build/toolchain_pins.conf
 
 # Create necessary directories
 RUN mkdir -p /app/src/web_static/vendor/js /app/src/web_static/img /app/src/web_static/version /app/src/web_static/fonts

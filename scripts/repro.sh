@@ -71,12 +71,15 @@ else
     echo "Docker image '$IMAGE_NAME' found locally."
 fi
 
+# Verify base image digest matches the pinned configuration
+bash "$SCRIPT_DIR/verify_base_image_digest.sh" "$PROJECT_ROOT/build/toolchain_pins.conf"
+
 echo "--- Running Reproducibility Check ---"
 
 # Construct the command to run inside the container
 # Needs to source IDF env and run the specific repro script
 # The repro script is copied to /app/scripts/repro_builder.py in the Dockerfile
-CMD_INSIDE_CONTAINER=". /opt/esp/idf/export.sh && python3 /app/scripts/repro_builder.py --tag $TAG"
+CMD_INSIDE_CONTAINER=". /opt/esp/idf/export.sh && bash /app/scripts/verify_pinned_versions.sh /app/build/apt_pins.conf && bash /app/scripts/verify_toolchain_versions.sh /app/build/toolchain_pins.conf && python3 /app/scripts/repro_builder.py --tag $TAG"
 
 # Run the Docker container
 # No volume mount needed as repro script handles its own cloning within container
