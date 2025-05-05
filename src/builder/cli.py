@@ -138,6 +138,10 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
             logger.info(f"Build information saved successfully for version {build_info.get('version', 'N/A')}.")
             logger.debug(f"Build Info Contents: {build_info}")
 
+        # Add a clear completion message
+        logger.info("")
+        logger.info("--- Build Process Complete ---")
+
     else: # Not performing build, using existing info loaded earlier
         logger.info(f"Using existing build artifacts for Tag: {selected_tag}, Version: {expected_version}")
         # No action needed here, vars selected_tag and expected_version are already set
@@ -147,8 +151,6 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
         # After fallback logic, we must have determined the build target
         logger.critical(f"Internal logic error: Could not determine selected tag ({selected_tag}) or expected version ({expected_version}). Aborting.")
         sys.exit("Failed to establish build target due to internal logic error.")
-
-    logger.info(f"Proceeding with Tag: {selected_tag}, Expected Version: {expected_version}")
     return selected_tag, expected_version
 
 def _parse_arguments():
@@ -169,6 +171,8 @@ def _parse_arguments():
 
 def _setup_logging(args: argparse.Namespace):
     """Configures file and console logging for the root logger based on arguments."""
+    from .color_formatter import ColoredFormatter
+
     log_dir = get_env_dir() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file_path = log_dir / LOG_FILE_NAME
@@ -191,10 +195,10 @@ def _setup_logging(args: argparse.Namespace):
     fh.setFormatter(file_formatter)
     root_logger.addHandler(fh)
 
-    # Console Handler
+    # Console Handler with colored output
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(log_level_console)
-    console_formatter = logging.Formatter('%(levelname)s: %(message)s') # Keep console simple
+    console_formatter = ColoredFormatter('%(levelname)s: %(message)s') # Colored formatter
     ch.setFormatter(console_formatter)
     root_logger.addHandler(ch)
 
@@ -243,6 +247,55 @@ def _handle_reproducibility_check(args: argparse.Namespace):
 
 
 
+def _display_build_summary(selected_tag, expected_version, args):
+    """Displays a user-friendly summary of the build results."""
+    from .color_formatter import Colors
+
+    # Only show summary if we did a build (not for flash)
+    if args.flash_ip:
+        return
+
+    # Get the output directory
+    output_dir = CONTAINER_OUTPUT_DIR
+
+    # Check if build_info.json exists
+    build_info_path = output_dir / BUILD_INFO_FILE
+    build_info = None
+    if build_info_path.exists():
+        try:
+            with open(build_info_path, 'r') as f:
+                build_info = json.load(f)
+        except Exception as e:
+            logger.debug(f"Could not read build info: {e}")
+
+    # Print a visually distinct summary section
+    print("\n" + "=" * 60)
+    print(f"{Colors.BOLD}{Colors.BRIGHT_GREEN}BUILD SUMMARY{Colors.RESET}")
+    print("=" * 60)
+
+    # Build information
+    if selected_tag:
+        print(f"{Colors.BOLD}Tag:{Colors.RESET}           {Colors.BRIGHT_CYAN}{selected_tag}{Colors.RESET}")
+    if expected_version:
+        print(f"{Colors.BOLD}Version:{Colors.RESET}       {Colors.BRIGHT_CYAN}{expected_version}{Colors.RESET}")
+
+    # Files information
+    if build_info and 'files' in build_info:
+        print(f"\n{Colors.BOLD}Build Artifacts:{Colors.RESET}")
+        for file in build_info['files']:
+            file_path = output_dir / file
+            if file_path.exists():
+                size = file_path.stat().st_size
+                size_str = f"{size / 1024:.1f} KB" if size < 1024 * 1024 else f"{size / (1024 * 1024):.1f} MB"
+                print(f"  {Colors.BRIGHT_GREEN}✓{Colors.RESET} {file} ({size_str})")
+
+    print("=" * 60 + "\n")
+
+def _display_flash_summary(selected_tag, expected_version, args):
+    """Displays a simplified summary after flashing."""
+    # This function is intentionally empty to prevent displaying a summary after flashing
+    pass
+
 def main():
     """Main entry point for the CLI application."""
     args = _parse_arguments()
@@ -267,7 +320,8 @@ def main():
     # Pass necessary args to _handle_flashing (from device.py)
     _handle_flashing(args, selected_tag, expected_version)
 
-    logger.info("--- Builder Finished --- ")
+    # Display a user-friendly build summary (only for build, not for flash)
+    _display_build_summary(selected_tag, expected_version, args)
 
 if __name__ == "__main__":
     # Basic config might run before _setup_logging, but _setup_logging will remove its handlers

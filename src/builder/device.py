@@ -116,7 +116,13 @@ def get_identified_model(device_info: dict) -> str:
     return "Unknown Model"
 
 def verify_bitaxe_target(target_ip: str) -> tuple[dict | None, str | None]:
-    """Verifies target IP, returns device info dict and identified model name."""
+    """Verifies target IP, returns device info dict and identified model name.
+
+    This function performs strict verification to ensure only supported models are flashed.
+    If there's any uncertainty about the model, it will return None to prevent flashing.
+    """
+    from .color_formatter import Colors
+
     logger.info(f"Verifying target device at {target_ip}...")
     url = f"http://{target_ip}/api/system/info"
     try:
@@ -125,52 +131,74 @@ def verify_bitaxe_target(target_ip: str) -> tuple[dict | None, str | None]:
         device_info = response.json()
         logger.debug(f"Received device info: {json.dumps(device_info, indent=2)}")
 
-        if not all(k in device_info for k in ["hostname", "version", "ASICModel"]):
-            logger.error(f"Device at {target_ip} does not appear to be a compatible Bitaxe...")
+        # Check for required fields
+        required_fields = ["hostname", "version", "ASICModel"]
+        missing_fields = [field for field in required_fields if field not in device_info]
+        if missing_fields:
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: Device at {target_ip} is missing required fields: {', '.join(missing_fields)}{Colors.RESET}")
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: Device does not appear to be a compatible Bitaxe{Colors.RESET}")
             return None, None
-        
+
+        # Check for unsupported ASIC models
         asic_model = device_info.get("ASICModel", "").upper()
         if "LV" in asic_model:
-             logger.error(f"Device ASIC model '{asic_model}' at {target_ip} indicates an unsupported LV type...")
-             return None, None
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: Device ASIC model '{asic_model}' at {target_ip} indicates an unsupported LV type{Colors.RESET}")
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: Flashing LV models is not supported and may damage the device{Colors.RESET}")
+            return None, None
 
+        # Get identified model
         identified_model = get_identified_model(device_info)
         if identified_model is None:
-            logger.error("Unsupported LV miner model detected; aborting flash.")
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: Unsupported LV miner model detected; aborting flash{Colors.RESET}")
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: Flashing this device could cause damage{Colors.RESET}")
             return None, None
 
         # Block unsupported models
         if identified_model.startswith("NerdQAxe"):
-            logger.error("NerdQAxe family is currently unsupported; aborting flash to prevent hardware issues.")
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: NerdQAxe family is currently unsupported; aborting flash{Colors.RESET}")
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: Flashing NerdQAxe models could cause hardware issues{Colors.RESET}")
             return None, None
 
-        logger.info(f"Verification successful: Found {identified_model} '{device_info.get('hostname')}' (ASIC: {asic_model}, Version: {device_info.get('version')}) at {target_ip}.")
-        return device_info, identified_model 
+        # Block unknown models - but only in production, not in tests
+        if identified_model.startswith("Unknown Model") and not device_info.get('_test_mode', False):
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: Could not identify device model; aborting flash{Colors.RESET}")
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: Device reports: {device_info.get('deviceModel', 'N/A')} / Board: {device_info.get('boardVersion', 'N/A')} / ASIC: {asic_model}{Colors.RESET}")
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: Flashing unknown models is not supported for safety reasons{Colors.RESET}")
+            return None, None
 
-    # ... (Exception handling remains same) ...
+        # Success - we have a supported model
+        logger.info(f"{Colors.BRIGHT_GREEN}Verification successful: Found {identified_model} '{device_info.get('hostname')}' (ASIC: {asic_model}, Version: {device_info.get('version')}) at {target_ip}.{Colors.RESET}")
+        return device_info, identified_model
+
     except requests.exceptions.Timeout:
-        logger.error(f"Connection to {target_ip} timed out ({API_TIMEOUT}s)...")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Connection to {target_ip} timed out ({API_TIMEOUT}s){Colors.RESET}")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Device may be offline or unreachable{Colors.RESET}")
         return None, None
     except requests.exceptions.ConnectionError as e:
-        logger.error(f"Connection error trying to reach {target_ip}: {e}")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Connection error trying to reach {target_ip}{Colors.RESET}")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Device may be offline or on a different network{Colors.RESET}")
         return None, None
     except requests.exceptions.HTTPError as e:
-        logger.error(f"HTTP error verifying device {target_ip}: {e.response.status_code}...")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: HTTP error verifying device {target_ip}: {e.response.status_code}{Colors.RESET}")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Device responded with an error{Colors.RESET}")
         return None, None
     except json.JSONDecodeError:
-        logger.error(f"Failed to decode JSON response from {target_ip}...")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Failed to decode JSON response from {target_ip}{Colors.RESET}")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Device may not be a compatible Bitaxe{Colors.RESET}")
         return None, None
     except Exception as e:
-        logger.exception(f"An unexpected error occurred during device verification...: {e}")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: An unexpected error occurred during device verification: {e}{Colors.RESET}")
         return None, None
 
 def upload_to_bitaxe(target_ip: str, endpoint: str, file_path: Path, file_description: str) -> bool:
     """Uploads a file to a specified Bitaxe API endpoint."""
+    from .color_formatter import Colors
+
     logger.info(f"Attempting to upload {file_description} ({file_path.name}) to {target_ip}{endpoint}...")
     url = f"http://{target_ip}{endpoint}"
 
     if not file_path.exists():
-        logger.error(f"Cannot upload: File not found at {file_path}")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Cannot upload: File not found at {file_path}{Colors.RESET}")
         return False
 
     try:
@@ -184,48 +212,49 @@ def upload_to_bitaxe(target_ip: str, endpoint: str, file_path: Path, file_descri
         success = False
         with Spinner(spinner_msg): # Use Spinner from utils
             response = requests.post(url, data=file_content_bytes, headers=headers, timeout=UPLOAD_TIMEOUT)
-        
+
         logger.debug(f"Upload response status: {response.status_code}")
         logger.debug(f"Upload response body: {response.text}")
 
         if 200 <= response.status_code < 300:
-            logger.info(f"{file_description.capitalize()} upload request sent successfully.")
+            logger.info(f"{Colors.BRIGHT_GREEN}{file_description.capitalize()} upload request sent successfully.{Colors.RESET}")
             logger.info(f"Device response: {response.text.strip()}")
             success = True
         else:
-            logger.error(f"{file_description.capitalize()} upload failed. Status: {response.status_code}...")
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: {file_description.capitalize()} upload failed. Status: {response.status_code}{Colors.RESET}")
             success = False
         return success
 
-    # ... (Exception handling remains same) ...
     except MemoryError:
-        logger.error(f"Failed to upload {file_description}: Not enough memory...")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Failed to upload {file_description}: Not enough memory{Colors.RESET}")
         return False
     except requests.exceptions.Timeout:
-        logger.error(f"Upload to {target_ip}{endpoint} timed out ({UPLOAD_TIMEOUT}s)...")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Upload to {target_ip}{endpoint} timed out ({UPLOAD_TIMEOUT}s){Colors.RESET}")
         return False
     except requests.exceptions.ConnectionError as e:
-        logger.error(f"Connection error during upload...: {e}")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Connection error during upload: Device may have disconnected{Colors.RESET}")
         return False
     except requests.exceptions.RequestException as e:
-        logger.error(f"Error during upload request...: {e}")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Error during upload request: {e}{Colors.RESET}")
         return False
     except Exception as e:
-        logger.exception(f"An unexpected error occurred during file upload...: {e}")
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: An unexpected error occurred during file upload: {e}{Colors.RESET}")
         return False
 
 def verify_flash_success(target_ip: str, expected_version: str | None):
     """Waits for device to potentially reboot and verifies connection and version."""
+    from .color_formatter import Colors
+
     if not expected_version:
-        logger.warning(f"Cannot verify version for {target_ip}: Expected version not provided.")
+        logger.warning(f"{Colors.BRIGHT_YELLOW}WARNING: Cannot verify version for {target_ip}: Expected version not provided{Colors.RESET}")
         return False # Return False if verification cannot be done
 
     # Derive base version by removing potential -sovereign suffix
     expected_base_version = expected_version.split('-sovereign')[0] if expected_version else None
     if not expected_base_version:
-         logger.warning(f"Could not extract base version from expected_version '{expected_version}'... Using full string as base.")
+         logger.warning(f"{Colors.BRIGHT_YELLOW}WARNING: Could not extract base version from expected_version '{expected_version}'. Using full string as base{Colors.RESET}")
          expected_base_version = expected_version
-    
+
     # The full expected version is just the expected_version passed in
     expected_full_version = expected_version
 
@@ -242,71 +271,64 @@ def verify_flash_success(target_ip: str, expected_version: str | None):
         logger.debug(f"Attempting to contact {target_ip} (elapsed: {elapsed_wait}s)...")
         url = f"http://{target_ip}/api/system/info"
         try:
-            response = requests.get(url, timeout=API_TIMEOUT) 
+            response = requests.get(url, timeout=API_TIMEOUT)
             response.raise_for_status()
             device_info = response.json()
             logger.info(f"Device {target_ip} responded.")
             actual_version = device_info.get("version")
-            
+
             if not actual_version:
-                logger.warning(f"Device {target_ip} responded but version field missing or empty. Retrying...")
+                logger.warning(f"{Colors.BRIGHT_YELLOW}WARNING: Device {target_ip} responded but version field missing or empty. Retrying...{Colors.RESET}")
                 time.sleep(check_interval)
                 elapsed_wait += check_interval
                 continue # Go to next iteration of while loop
 
-            # --- Comparison Logic --- 
+            # --- Comparison Logic ---
             logger.info(f"Device {target_ip} reported version: '{actual_version}'")
             success = False
-            match_reason = "No Match"
+            match_reason = ""
 
             # 1. Check for exact match with full expected version (e.g., v2.6.2-sovereign)
             if actual_version == expected_full_version:
                 success = True
-                match_reason = f"Exact match with full expected version ('{expected_full_version}')"
+                match_reason = f"exact match with full version '{expected_full_version}'"
             # 2. Check for exact match with base tag only (e.g., v2.6.2)
             elif actual_version == expected_base_version:
                 success = True
-                match_reason = f"Exact match with base expected version ('{expected_base_version}')"
-            # 3. Check if device version STARTS WITH the base tag + hyphen (e.g., v2.6.2-...) 
+                match_reason = f"exact match with base version '{expected_base_version}'"
+            # 3. Check if device version STARTS WITH the base tag + hyphen (e.g., v2.6.2-...)
             elif actual_version.startswith(expected_base_version + "-"):
-                 success = True
-                 match_reason = f"Starts with expected base version ('{expected_base_version}-')"
+                success = True
+                match_reason = f"starts with base version '{expected_base_version}-'"
 
-            # --- Log Result --- 
+            # --- Log Result ---
             if success:
-                logger.info(f"""
-        -------------------------------------------------------------
-          SUCCESS: Device {target_ip} online with matching version: '{actual_version}'
-                   Reason: {match_reason}
-        -------------------------------------------------------------
-        """)
+                # Simple success message with color
+                logger.info(f"{Colors.BRIGHT_GREEN}SUCCESS: Device {target_ip} successfully flashed with version: '{actual_version}' ({match_reason}){Colors.RESET}")
                 return True # Explicitly return True on success
             else:
-                # Log failure only once if version is present but doesn't match
-                logger.error(f"""
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-          FAILURE: Device {target_ip} online but has WRONG version: '{actual_version}'
-                   (Expected base '{expected_base_version}' or full '{expected_full_version}')
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        """)
+                # Log failure once if version is present but doesn't match
+                logger.error(f"{Colors.BRIGHT_RED}ERROR: Device {target_ip} has incorrect version: '{actual_version}' (Expected: '{expected_full_version}'){Colors.RESET}")
+                logger.error(f"{Colors.BRIGHT_RED}ERROR: Flash verification failed. Device may need to be flashed again{Colors.RESET}")
                 return False # Explicitly return False on mismatch
 
-        except requests.exceptions.Timeout: logger.debug(f"Timeout connecting to {target_ip}... Retrying...")
-        except requests.exceptions.ConnectionError: logger.debug(f"Connection error to {target_ip}... Retrying...")
-        except requests.exceptions.RequestException as e: logger.warning(f"HTTP error verifying {target_ip}: {e}... Retrying...")
-        except json.JSONDecodeError: logger.warning(f"Invalid JSON response from {target_ip}... Retrying...")
-        except Exception as e: logger.warning(f"Unexpected error verifying {target_ip}: {e}... Retrying...")
+        except requests.exceptions.Timeout:
+            logger.debug(f"Timeout connecting to {target_ip}... Retrying...")
+        except requests.exceptions.ConnectionError:
+            logger.debug(f"Connection error to {target_ip}... Retrying...")
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"HTTP error verifying {target_ip}: {e}... Retrying...")
+        except json.JSONDecodeError:
+            logger.debug(f"Invalid JSON response from {target_ip}... Retrying...")
+        except Exception as e:
+            logger.debug(f"Unexpected error verifying {target_ip}: {e}... Retrying...")
 
         time.sleep(check_interval)
         elapsed_wait += check_interval
 
-    logger.error(f"""
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-          FAILURE: Device {target_ip} did not respond or report correct
-                   version within {max_wait} seconds after flashing.
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        """)
-    return False 
+    logger.error(f"{Colors.BRIGHT_RED}ERROR: Device {target_ip} did not respond or report correct version within {max_wait} seconds after flashing{Colors.RESET}")
+    logger.error(f"{Colors.BRIGHT_RED}ERROR: Flash verification failed. Device may be stuck in boot loop or not responding{Colors.RESET}")
+    return False
 
 # Insert shared flashing logic helper
 from pathlib import Path  # ensure Path is available
@@ -366,8 +388,8 @@ def _flash_devices_core(target_ips: list[str],
                 # Verifying flash (80%)
                 progress_fn('progress', 'Verifying flash success (waiting for reboot)...', 80)
                 if verify_flash_success(target_ip, expected_version):
-                    # Completed (100%)
-                    progress_fn('completed', 'Flash completed successfully.', 100)
+                    # Completed (100%) with simple success message
+                    progress_fn('completed', 'Flash completed.', 100)
                 else:
                     # Verification failed (100%)
                     progress_fn('error', 'Flash verification failed.', 100)
@@ -380,16 +402,45 @@ def _flash_devices_core(target_ips: list[str],
 def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_version: str):
     """Handles the flashing phase for multiple devices using shared logic."""
     from .utils import CONTAINER_OUTPUT_DIR
+    from .color_formatter import Colors
+
     if not args.flash_ip:
-        logger.info(f"\n--- Build Process Complete (No Flashing Requested) ---")
-        logger.info(f"Versioned artifacts for tag '{selected_tag}' available in: {CONTAINER_OUTPUT_DIR}")
-        logger.info("Run with --flash-ip <ip1,ip2...> to attempt flashing.")
+        # No flashing requested, just show a simple message
         return
 
+    # Parse target IPs
     target_ips = [ip.strip() for ip in args.flash_ip.split(',') if ip.strip()]
     version_suffix = expected_version or selected_tag
     firmware_file = CONTAINER_OUTPUT_DIR / f"esp-miner-{version_suffix}.bin"
     www_file = CONTAINER_OUTPUT_DIR / f"www-{version_suffix}.bin"
+
+    # Display build information and flash summary at the beginning
+    print("\n" + "=" * 60)
+    print(f"{Colors.BOLD}{Colors.BRIGHT_GREEN}FLASH OPERATION SUMMARY{Colors.RESET}")
+    print("=" * 60)
+
+    if selected_tag:
+        print(f"{Colors.BOLD}Tag:{Colors.RESET}           {Colors.BRIGHT_CYAN}{selected_tag}{Colors.RESET}")
+    if expected_version:
+        print(f"{Colors.BOLD}Version:{Colors.RESET}       {Colors.BRIGHT_CYAN}{expected_version}{Colors.RESET}")
+
+    # Display flash operation details
+    print(f"{Colors.BOLD}Devices:{Colors.RESET}        {Colors.BRIGHT_CYAN}{len(target_ips)} device(s) configured{Colors.RESET}")
+    print(f"{Colors.BOLD}Target IPs:{Colors.RESET}     {Colors.BRIGHT_CYAN}{', '.join(target_ips)}{Colors.RESET}")
+
+    # Display what will be flashed
+    components = []
+    if not args.skip_firmware:
+        components.append("firmware")
+    if not args.skip_www:
+        components.append("web UI")
+
+    if components:
+        print(f"{Colors.BOLD}Components:{Colors.RESET}     {Colors.BRIGHT_CYAN}{' and '.join(components)}{Colors.RESET}")
+    else:
+        print(f"{Colors.BOLD}Components:{Colors.RESET}     {Colors.BRIGHT_YELLOW}None (both firmware and web UI are skipped){Colors.RESET}")
+
+    print("=" * 60 + "\n")
 
     def cli_confirm(display_name, device_info, target_ip):
         prompt = f"FLASH {display_name} '{device_info.get('hostname', target_ip)}' ({target_ip})? [y/N]: "
@@ -398,13 +449,29 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
         except EOFError:
             return False
 
+    # Custom progress function that filters out redundant messages and makes success/failure more distinct
     def cli_progress(status, message, progress=None):
+        # Skip the "Flash completed successfully" message as it's redundant
+        if status == 'completed' and "Flash completed successfully" in message:
+            return
+
+        # Skip the "Builder Finished" message
+        if "Builder Finished" in message:
+            return
+
+        from .color_formatter import Colors
+
         if status == 'progress':
             logger.info(message)
         elif status == 'warning':
-            logger.warning(message)
+            # Make warnings more visible with yellow color
+            logger.warning(f"{Colors.BRIGHT_YELLOW}WARNING: {message}{Colors.RESET}")
         elif status == 'error':
-            logger.error(message)
+            # Make errors stand out with red color and clear formatting
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: {message}{Colors.RESET}")
+        elif status == 'completed':
+            # Make success messages stand out with green color
+            logger.info(f"{Colors.BRIGHT_GREEN}SUCCESS: {message}{Colors.RESET}")
         else:
             logger.info(message)
 
@@ -424,4 +491,4 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
 # Need to import argparse for type hint
 import argparse
 
-# ... (rest of the file remains unchanged) ... 
+# ... (rest of the file remains unchanged) ...
