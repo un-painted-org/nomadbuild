@@ -256,15 +256,16 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
             local pid=$1
             local delay=0.1
             local spinstr='|/-\'
+            tput civis  # Hide cursor
             while ps -p $pid > /dev/null; do
                 local temp=${spinstr#?}
-                printf " [%c]  " "$spinstr"
+                printf " [%c]" "$spinstr"
                 local spinstr=$temp${spinstr%"$temp"}
                 sleep $delay
-                printf "\b\b\b\b\b\b"
+                printf "\b\b\b"
             done
-            # Clear the spinner completely
-            printf "      \b\b\b\b\b\b"
+            printf "   \b\b\b"
+            tput cnorm  # Restore cursor
         }
 
         # Make the script executable
