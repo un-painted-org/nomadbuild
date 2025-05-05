@@ -21,7 +21,7 @@ Enhance the CSV-based multi-device flashing feature to support specifying target
 - Example:
   ```
   # Bitaxe Gammas that will always get the latest stable version
-  192.168.1.100 
+  192.168.1.100
   192.168.1.101
 
   # Bitaxe Supras on my tested v2.6.5 release
@@ -57,15 +57,24 @@ Enhance the CSV-based multi-device flashing feature to support specifying target
 - Provide clear success/failure messages for each operation
 - Allow the user to confirm before proceeding with the entire operation
 
-## Potential Improvements to Consider
-1. **Parallel Building**: Consider building multiple firmware versions in parallel to save time
-2. **Caching Built Firmware**: Cache built firmware to avoid rebuilding the same version multiple times
-3. **Selective Confirmation**: Allow the user to confirm each firmware version group separately
-4. **Failure Handling**: Provide options for how to handle failures (continue with other groups or abort)
-5. **Dry Run Mode**: Add a dry-run option to show what would be done without actually doing it
-6. **Version Validation**: Validate that specified versions exist before starting the build process
-7. **Progress Visualization**: Enhance the progress display to show overall progress across all groups
-8. **Logging**: Improve logging to capture details of each operation for troubleshooting
+## Key Features to Implement
+1. **Dry Run Mode**: Add a `--dry-run` option to show what would be done without actually performing any builds or flashes
+   - Display the firmware versions that would be built
+   - Show which devices would receive each firmware version
+   - Validate the CSV file format and IP addresses
+2. **Detailed Reporting**: Provide clear and concise reporting throughout the process
+   - Show summary of planned operations before starting
+   - Display progress for each firmware build and device flash
+   - Ensure success/failure messages are easily distinguishable
+3. **Failure Handling**: Implement robust error handling
+   - Provide clear error messages for any issues
+   - Allow user to choose whether to continue with other groups after a failure
+4. **Progress Visualization**: Show clear progress indicators for each stage
+   - Display which firmware version is currently being built
+   - Show which devices are being flashed with which version
+5. **Logging**: Capture detailed logs of all operations
+   - Record build and flash operations for troubleshooting
+   - Log any errors or warnings that occur during the process
 
 ## Acceptance Criteria
 1. User can specify firmware versions for individual devices in the CSV file
