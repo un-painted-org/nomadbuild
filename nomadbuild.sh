@@ -618,9 +618,9 @@ fi
 CMD_IN_CONTAINER=("python3" "-m" "src.builder.cli")
 echo "Running docker container with command: ${CMD_IN_CONTAINER[@]} ${DOCKER_CMD_ARGS[@]}"
 
-# Check if we need to mount a CSV file
+# Check if we need to copy a CSV file into the container
 CSV_FILE_PATH=""
-CSV_MOUNT=""
+CSV_CONTAINER_PATH=""
 i=0
 while [ $i -lt ${#DOCKER_CMD_ARGS[@]} ]; do
     if [[ "${DOCKER_CMD_ARGS[$i]}" == "--flash-csv" && $(($i+1)) -lt ${#DOCKER_CMD_ARGS[@]} ]]; then
@@ -628,29 +628,55 @@ while [ $i -lt ${#DOCKER_CMD_ARGS[@]} ]; do
 
         # Check if the CSV file exists
         if [ -f "$CSV_FILE_PATH" ]; then
-            # Get absolute path
+            # Get absolute path and filename
             CSV_FILE_ABS_PATH=$(realpath "$CSV_FILE_PATH")
             CSV_FILE_NAME=$(basename "$CSV_FILE_PATH")
 
-            # Update the argument to use the container path
-            DOCKER_CMD_ARGS[$((i+1))]="/csv/$CSV_FILE_NAME"
+            # Create a temporary container to copy the CSV file
+            echo "Copying CSV file into container: $CSV_FILE_ABS_PATH"
 
-            # Add mount for the CSV file
-            CSV_MOUNT="-v $CSV_FILE_ABS_PATH:/csv/$CSV_FILE_NAME"
-            echo "Mounting CSV file: $CSV_FILE_ABS_PATH -> /csv/$CSV_FILE_NAME"
+            # Create a temporary container
+            TEMP_CONTAINER_ID=$(docker create "$IMAGE_NAME")
+
+            # Copy the CSV file into the container
+            docker cp "$CSV_FILE_ABS_PATH" "$TEMP_CONTAINER_ID:/tmp/$CSV_FILE_NAME"
+
+            # Commit the container as a new temporary image
+            TEMP_IMAGE_NAME="nomadbuild-with-csv:temp"
+            docker commit "$TEMP_CONTAINER_ID" "$TEMP_IMAGE_NAME"
+
+            # Remove the temporary container
+            docker rm "$TEMP_CONTAINER_ID" > /dev/null
+
+            # Update the argument to use the container path
+            DOCKER_CMD_ARGS[$((i+1))]="/tmp/$CSV_FILE_NAME"
+
+            # Set the image name to use
+            IMAGE_NAME_TO_USE="$TEMP_IMAGE_NAME"
+
+            # Set flag to remove the temporary image after use
+            REMOVE_TEMP_IMAGE=true
         else
             echo "Warning: CSV file not found at $CSV_FILE_PATH"
+            IMAGE_NAME_TO_USE="$IMAGE_NAME"
         fi
         break
     fi
     ((i++))
 done
 
-# Run the container with the appropriate mounts
-if [ -n "$CSV_MOUNT" ]; then
-    docker run -it --rm -v "$FIRMWARE_DIR:/firmware" $CSV_MOUNT "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
-else
-    docker run -it --rm -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
+# If no CSV file was processed, use the original image
+if [ -z "$IMAGE_NAME_TO_USE" ]; then
+    IMAGE_NAME_TO_USE="$IMAGE_NAME"
+fi
+
+# Run the container
+docker run -it --rm -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME_TO_USE" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
+
+# Clean up temporary image if created
+if [ "$REMOVE_TEMP_IMAGE" = true ]; then
+    echo "Cleaning up temporary container image"
+    docker rmi "$TEMP_IMAGE_NAME" > /dev/null
 fi
 
 EXIT_CODE=$?
