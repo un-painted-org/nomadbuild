@@ -609,5 +609,4 @@ echo "Running docker container with command: ${CMD_IN_CONTAINER[@]} ${DOCKER_CMD
 docker run -it --rm -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
 
 EXIT_CODE=$?
-echo "NomadBuild finished (Exit Code: $EXIT_CODE)."
 exit $EXIT_CODE

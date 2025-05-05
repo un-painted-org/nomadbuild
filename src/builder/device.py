@@ -257,20 +257,16 @@ def verify_flash_success(target_ip: str, expected_version: str | None):
             # --- Comparison Logic ---
             logger.info(f"Device {target_ip} reported version: '{actual_version}'")
             success = False
-            match_reason = "No Match"
 
             # 1. Check for exact match with full expected version (e.g., v2.6.2-sovereign)
             if actual_version == expected_full_version:
                 success = True
-                match_reason = f"Exact match with full expected version ('{expected_full_version}')"
             # 2. Check for exact match with base tag only (e.g., v2.6.2)
             elif actual_version == expected_base_version:
                 success = True
-                match_reason = f"Exact match with base expected version ('{expected_base_version}')"
             # 3. Check if device version STARTS WITH the base tag + hyphen (e.g., v2.6.2-...)
             elif actual_version.startswith(expected_base_version + "-"):
-                 success = True
-                 match_reason = f"Starts with expected base version ('{expected_base_version}-')"
+                success = True
 
             # --- Log Result ---
             if success:
