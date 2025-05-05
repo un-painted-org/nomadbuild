@@ -13,6 +13,9 @@ Enhance the CSV-based multi-device flashing feature to support specifying target
    - Flash all devices in that group with the built firmware
 6. Maintain all existing device verification and safety measures
 7. Provide clear progress reporting for each firmware version build and device flash
+8. Ignore the global `--tag <VERSION>` command line parameter when using CSV-based multi-version flashing
+   - CSV entries should override any global tag specification
+   - Provide clear warning when `--tag` is specified but ignored due to CSV version entries
 
 ## Implementation Details
 
@@ -83,4 +86,6 @@ Enhance the CSV-based multi-device flashing feature to support specifying target
 4. All existing device verification and safety measures are maintained
 5. Clear progress reporting is provided for each operation
 6. Success and failure messages are easily distinguishable
-7. All tests pass, including new tests for multi-version flashing
+7. The `--tag` parameter is properly ignored when CSV-based multi-version flashing is used
+8. Dry-run mode correctly shows what would be done without executing any operations
+9. All tests pass, including new tests for multi-version flashing
