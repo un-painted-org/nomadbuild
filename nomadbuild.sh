@@ -68,6 +68,7 @@ Actions:
   --flash-ip <IP>       Flash firmware to device at <IP>
   --restart-webui       Restart web UI (stops existing container)
   --build-image         Only build/rebuild the Docker image
+  --clean-image         Remove existing Docker image and build a fresh one
   --test [OPTIONS]      Run tests (passes options to test.sh)
   --repro               Run reproducibility check
   --help                Show this help
@@ -83,6 +84,7 @@ Examples:
   ./nomadbuild.sh --webui
   ./nomadbuild.sh --build --tag v2.6.3
   ./nomadbuild.sh --flash-ip 192.168.1.100
+  ./nomadbuild.sh --clean-image
 
 EOF
     exit 0
@@ -90,6 +92,7 @@ EOF
 
 # --- Argument Parsing (Manual) ---
 BUILD_IMAGE=false
+CLEAN_IMAGE=false
 DO_BUILD_LATEST=false
 WEB_UI=false
 RESTART_WEB_UI=false
@@ -120,6 +123,8 @@ while [[ $# -gt 0 ]]; do
             DOCKER_CMD_ARGS+=("--flash-ip" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
         --build-image)
             BUILD_IMAGE=true; shift ;;
+        --clean-image)
+            CLEAN_IMAGE=true; HAS_ACTION_FLAG=true; shift ;;
         --no-cache)
             NO_CACHE=true; shift ;;
         --force-flash)
@@ -179,6 +184,28 @@ if [ "$HAS_ACTION_FLAG" = false ]; then
         printf "%b\n" "\e[35m• See all options: ./nomadbuild.sh --help\e[0m"
         echo
         exit 0
+    fi
+fi
+
+# Handle clean image request
+if [ "$CLEAN_IMAGE" = true ]; then
+    if docker image inspect "$IMAGE_NAME" &> /dev/null; then
+        echo "Removing existing Docker image: $IMAGE_NAME..."
+        if docker rmi -f "$IMAGE_NAME" &> /dev/null; then
+            echo "Successfully removed existing Docker image."
+            # Force build image flag to true
+            BUILD_IMAGE=true
+            # Force no-cache to ensure a completely fresh build
+            NO_CACHE=true
+        else
+            echo "Error: Failed to remove existing Docker image."
+            echo "You may need to stop any running containers using this image first."
+            exit 1
+        fi
+    else
+        echo "No existing Docker image found. Will build a fresh image."
+        BUILD_IMAGE=true
+        NO_CACHE=true
     fi
 fi
 
