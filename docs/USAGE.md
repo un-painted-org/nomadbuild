@@ -52,6 +52,8 @@ You can flash multiple devices at once using a CSV file:
 ./nomadbuild.sh --tag v2.6.1 --flash-csv devices.csv
 ```
 
+**Note**: The `--flash-csv` and `--flash-ip` options are mutually exclusive. You can use one or the other, but not both at the same time.
+
 The CSV file should contain one IP address per line. Comments (lines starting with #) and empty lines are ignored.
 
 Example CSV file:
