@@ -256,9 +256,7 @@ def _display_build_summary(selected_tag, expected_version, args):
     """Displays a user-friendly summary of the build results."""
     from .color_formatter import Colors
 
-    # Skip summary if we're flashing
-    if args.flash_ip:
-        return
+    # Always show build summary, regardless of whether flashing is requested
 
     # Get the output directory
     output_dir = CONTAINER_OUTPUT_DIR
@@ -322,11 +320,11 @@ def main():
     # Normal build and flash flow
     selected_tag, expected_version = _handle_build_or_use_existing(args)
 
+    # Display a user-friendly build summary before flashing
+    _display_build_summary(selected_tag, expected_version, args)
+
     # Pass necessary args to _handle_flashing (from device.py)
     _handle_flashing(args, selected_tag, expected_version)
-
-    # Display a user-friendly build summary (only for build, not for flash)
-    _display_build_summary(selected_tag, expected_version, args)
 
 if __name__ == "__main__":
     # Basic config might run before _setup_logging, but _setup_logging will remove its handlers
