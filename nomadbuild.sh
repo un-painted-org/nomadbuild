@@ -249,11 +249,37 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
 
     # Ensure vendor files are downloaded before building image
     if [ -f "./scripts/download_vendors.sh" ]; then
-        echo "Setting up vendor JavaScript files..."
+        echo -n "Setting up vendor JavaScript files... "
+
+        # Define a function for the spinner animation
+        spinner() {
+            local pid=$1
+            local delay=0.1
+            local spinstr='|/-\'
+            while ps -p $pid > /dev/null; do
+                local temp=${spinstr#?}
+                printf " [%c]  " "$spinstr"
+                local spinstr=$temp${spinstr%"$temp"}
+                sleep $delay
+                printf "\b\b\b\b\b\b"
+            done
+            printf "    \b\b\b\b"
+        }
+
+        # Make the script executable
         chmod +x ./scripts/download_vendors.sh
-        # Redirect output, but check exit code
-        if ! ./scripts/download_vendors.sh >/dev/null 2>&1; then
-            echo "WARNING: download_vendors.sh failed. CDN dependencies may not be properly embedded."
+
+        # Run the download script in the background and show spinner
+        ./scripts/download_vendors.sh >/dev/null 2>&1 &
+        DOWNLOAD_PID=$!
+        spinner $DOWNLOAD_PID
+
+        # Check if the download was successful
+        wait $DOWNLOAD_PID
+        if [ $? -ne 0 ]; then
+            echo -e "\nWARNING: download_vendors.sh failed. CDN dependencies may not be properly embedded."
+        else
+            echo "done"
         fi
     else
         echo "WARNING: download_vendors.sh script not found at ./scripts/download_vendors.sh. CDN dependencies may not be properly embedded."
@@ -270,14 +296,30 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
     BUILD_CMD="$BUILD_CMD -t \"$IMAGE_NAME\" \"$PROJECT_ROOT\""
 
     # Build the image using docker build command directly from project root
-    # Display the command being run for transparency - REMOVED
-    # echo "Running build command: $BUILD_CMD"
-    if BUILD_OUTPUT=$(eval $BUILD_CMD); then
-        # echo "Docker image '$IMAGE_NAME' build complete." # Removed verbosity
+    echo -n "Building Docker image (this may take a few minutes)... "
+
+    # Run the build command in the background and capture its output
+    eval $BUILD_CMD > /tmp/docker_build_output.$$.$RANDOM 2>&1 &
+    BUILD_PID=$!
+
+    # Show spinner while building
+    spinner $BUILD_PID
+
+    # Check if the build was successful
+    wait $BUILD_PID
+    BUILD_EXIT_CODE=$?
+
+    # Get the build output
+    BUILD_OUTPUT=$(cat /tmp/docker_build_output.$$.$RANDOM)
+    rm -f /tmp/docker_build_output.$$.$RANDOM
+
+    if [ $BUILD_EXIT_CODE -eq 0 ]; then
+        echo "done"
         echo "Image build complete. ID: $BUILD_OUTPUT" # Output only the image ID on success
         BUILD_WAS_PERFORMED=true
     else
-        echo "Error: Docker image build failed."
+        echo -e "\nError: Docker image build failed."
+        echo "Build output: $BUILD_OUTPUT"
         exit 1
     fi
 elif [ "$IMAGE_EXISTS" = true ]; then
