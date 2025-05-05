@@ -43,3 +43,25 @@ Runs two consecutive builds inside Docker and compares SHA-256 hashes of generat
 * **Flash fails** – verify IP address, make sure device and host are on same network.
 * **Port 9090 busy** – pass `--restart-webui` to stop existing container.
 * **After upgrading** – use `--build-image clean` to ensure you're using a fresh Docker image after upgrading to a new nomadbuild release.
+
+## CSV-Based Flashing
+
+You can flash multiple devices at once using a CSV file:
+
+```bash
+./nomadbuild.sh --tag v2.6.1 --flash-csv devices.csv
+```
+
+The CSV file should contain one IP address per line. Comments (lines starting with #) and empty lines are ignored.
+
+Example CSV file:
+```
+# Living room devices
+192.168.1.100
+192.168.1.101
+
+# Office devices
+192.168.1.102
+```
+
+The CSV file can be located anywhere on your system - it will be copied into the container for processing.
