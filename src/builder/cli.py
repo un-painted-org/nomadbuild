@@ -160,8 +160,12 @@ def _parse_arguments():
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress INFO messages in console output")
     parser.add_argument("--log-level", default="DEBUG", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Set file logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     parser.add_argument("--force-rebuild", action="store_true", help="Force rebuild even if artifacts exist")
-    parser.add_argument("--flash-ip", help="Comma-separated IP addresses of devices to flash")
-    parser.add_argument("--flash-csv", help="Path to CSV file containing IP addresses of devices to flash (one per line)")
+
+    # Create a mutually exclusive group for flash targets
+    flash_group = parser.add_mutually_exclusive_group()
+    flash_group.add_argument("--flash-ip", help="Comma-separated IP addresses of devices to flash")
+    flash_group.add_argument("--flash-csv", help="Path to CSV file containing IP addresses of devices to flash (one per line)")
+
     parser.add_argument("--skip-firmware", action="store_true", help="Skip flashing main firmware during update")
     parser.add_argument("--skip-www", action="store_true", help="Skip flashing web UI during update")
     parser.add_argument("--force-flash", action="store_true", help="Force flashing without confirmation for each device")

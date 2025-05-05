@@ -413,6 +413,11 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
         # No flashing requested, just show a simple message
         return
 
+    # Ensure only one of --flash-ip or --flash-csv is used
+    if args.flash_ip and args.flash_csv:
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Cannot use both --flash-ip and --flash-csv parameters together. Please use only one.{Colors.RESET}")
+        return
+
     # Get target IPs from either --flash-ip or --flash-csv
     target_ips = []
 
@@ -423,13 +428,8 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
 
     # Process --flash-csv parameter (CSV file)
     if args.flash_csv:
-        csv_ips = parse_csv_file(args.flash_csv)
-        if csv_ips:
-            # Add IPs from CSV file to the list, avoiding duplicates
-            for ip in csv_ips:
-                if ip not in target_ips:
-                    target_ips.append(ip)
-            logger.info(f"Found {len(csv_ips)} IP addresses from CSV file")
+        target_ips = parse_csv_file(args.flash_csv)
+        logger.info(f"Found {len(target_ips)} IP addresses from CSV file")
 
     # Check if we have any valid IPs
     if not target_ips:
