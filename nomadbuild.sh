@@ -301,16 +301,11 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
     # Build the image using docker build command directly from project root
     echo -n "Building Docker image (this may take a few minutes)... "
 
-<<<<<<< HEAD
-    # Run the build command in the background and capture its output
-    eval $BUILD_CMD > /tmp/docker_build_output.$$.$RANDOM 2>&1 &
-=======
     # Create a unique temporary file for this run
     TEMP_OUTPUT_FILE="/tmp/docker_build_output.$$"
 
     # Run the build command in the background and capture its output
     eval $BUILD_CMD > "$TEMP_OUTPUT_FILE" 2>&1 &
->>>>>>> dev
     BUILD_PID=$!
 
     # Show spinner while building
@@ -340,7 +335,12 @@ fi
 
 # --- Exit if only build image was requested ---
 if [ "$ONLY_BUILD_IMAGE" = true ]; then
-    # echo "Image build specified/completed. No other actions requested." # Removed verbosity
+    # Add a message about existing firmware if it exists
+    if [ -d "$PROJECT_ROOT/firmware" ] && [ -n "$(ls -A "$PROJECT_ROOT/firmware" 2>/dev/null)" ]; then
+        echo ""
+        echo "Note: Existing firmware files have been preserved in the firmware directory."
+        echo "To build firmware, run: ./nomadbuild.sh --build"
+    fi
     exit 0
 fi
 
