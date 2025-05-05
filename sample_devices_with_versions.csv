@@ -1,0 +1,19 @@
+# Sample CSV file for flashing multiple devices with specific firmware versions
+# Format: IP address, firmware version (optional)
+# If no firmware version is specified, the current stable version will be used
+
+# Bitaxe Gammas that will always get the latest stable version
+192.168.1.100 
+192.168.1.101
+
+# Bitaxe Supras on my tested v2.6.5 release
+192.168.1.102, v2.6.5
+192.168.1.103, v2.6.5
+
+# Bitaxe Ultras on the older v2.6.1 release
+192.168.1.104, v2.6.1
+192.168.1.105, v2.6.1
+
+# Another Bitaxe Gamma, but pinned to at the
+# time of writing current stable v2.7.0 release
+192.168.1.106, v2.7.0
