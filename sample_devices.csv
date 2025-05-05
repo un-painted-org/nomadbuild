@@ -1,0 +1,15 @@
+# Sample CSV file for flashing multiple devices
+# Format: One IP address per line
+# Comments (lines starting with #) and empty lines are ignored
+
+# Living room devices
+192.168.1.100
+192.168.1.101
+
+# Office devices
+192.168.1.102
+192.168.1.103
+
+# Basement devices
+192.168.1.104
+192.168.1.105

@@ -66,6 +66,7 @@ Actions:
   --build               Build latest firmware (Default if no other action)
   --tag <VERSION>       Build specific firmware version (e.g., v2.6.3)
   --flash-ip <IP>       Flash firmware to device at <IP>
+  --flash-csv <FILE>    Flash firmware to multiple devices using IP addresses from a CSV file
   --restart-webui       Restart web UI (stops existing container)
   --build-image [clean] Only build/rebuild the Docker image
                         Add 'clean' to remove existing image first (e.g., after upgrade)
@@ -84,6 +85,7 @@ Examples:
   ./nomadbuild.sh --webui
   ./nomadbuild.sh --build --tag v2.6.3
   ./nomadbuild.sh --flash-ip 192.168.1.100
+  ./nomadbuild.sh --flash-csv devices.csv
   ./nomadbuild.sh --build-image clean
 
 EOF
@@ -121,6 +123,9 @@ while [[ $# -gt 0 ]]; do
         --flash-ip)
              if [[ -z "$2" || "$2" == --* ]]; then echo "Error: --flash-ip requires an argument." >&2; show_help; fi
             DOCKER_CMD_ARGS+=("--flash-ip" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
+        --flash-csv)
+             if [[ -z "$2" || "$2" == --* ]]; then echo "Error: --flash-csv requires an argument." >&2; show_help; fi
+            DOCKER_CMD_ARGS+=("--flash-csv" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
         --build-image)
             BUILD_IMAGE=true;
             HAS_ACTION_FLAG=true;

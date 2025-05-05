@@ -9,6 +9,10 @@ import json
 from pathlib import Path
 import time
 import argparse
+import re
+import ipaddress
+import csv
+import os
 
 # Import necessary functions/classes from utils
 from .utils import Spinner, CONTAINER_APP_DIR, CONTAINER_OUTPUT_DIR
@@ -404,12 +408,38 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
     from .utils import CONTAINER_OUTPUT_DIR
     from .color_formatter import Colors
 
-    if not args.flash_ip:
+    # Check if any flashing is requested
+    if not args.flash_ip and not args.flash_csv:
         # No flashing requested, just show a simple message
         return
 
-    # Parse target IPs
-    target_ips = [ip.strip() for ip in args.flash_ip.split(',') if ip.strip()]
+    # Get target IPs from either --flash-ip or --flash-csv
+    target_ips = []
+
+    # Process --flash-ip parameter (comma-separated list)
+    if args.flash_ip:
+        target_ips = [ip.strip() for ip in args.flash_ip.split(',') if ip.strip()]
+        logger.info(f"Found {len(target_ips)} IP addresses from --flash-ip parameter")
+
+    # Process --flash-csv parameter (CSV file)
+    if args.flash_csv:
+        csv_ips = parse_csv_file(args.flash_csv)
+        if csv_ips:
+            # Add IPs from CSV file to the list, avoiding duplicates
+            for ip in csv_ips:
+                if ip not in target_ips:
+                    target_ips.append(ip)
+            logger.info(f"Found {len(csv_ips)} IP addresses from CSV file")
+
+    # Check if we have any valid IPs
+    if not target_ips:
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: No valid IP addresses found for flashing{Colors.RESET}")
+        return
+
+    # Sort IPs for consistent display
+    target_ips.sort()
+
+    # Get firmware files
     version_suffix = expected_version or selected_tag
     firmware_file = CONTAINER_OUTPUT_DIR / f"esp-miner-{version_suffix}.bin"
     www_file = CONTAINER_OUTPUT_DIR / f"www-{version_suffix}.bin"
@@ -426,7 +456,12 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
 
     # Display flash operation details
     print(f"{Colors.BOLD}Devices:{Colors.RESET}        {Colors.BRIGHT_CYAN}{len(target_ips)} device(s) configured{Colors.RESET}")
-    print(f"{Colors.BOLD}Target IPs:{Colors.RESET}     {Colors.BRIGHT_CYAN}{', '.join(target_ips)}{Colors.RESET}")
+
+    # Show all IPs if there are 5 or fewer, otherwise show the first 5 and a count
+    if len(target_ips) <= 5:
+        print(f"{Colors.BOLD}Target IPs:{Colors.RESET}     {Colors.BRIGHT_CYAN}{', '.join(target_ips)}{Colors.RESET}")
+    else:
+        print(f"{Colors.BOLD}Target IPs:{Colors.RESET}     {Colors.BRIGHT_CYAN}{', '.join(target_ips[:5])}... and {len(target_ips) - 5} more{Colors.RESET}")
 
     # Display what will be flashed
     components = []
@@ -442,7 +477,24 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
 
     print("=" * 60 + "\n")
 
+    # For multiple devices, ask for batch confirmation
+    if len(target_ips) > 1 and not args.force_flash:
+        try:
+            confirm = input(f"Do you want to flash {len(target_ips)} devices? This will update all listed devices. [y/N]: ")
+            if not confirm.strip().lower().startswith('y'):
+                logger.info("Flash operation cancelled by user.")
+                return
+        except EOFError:
+            logger.info("Flash operation cancelled (EOF).")
+            return
+
     def cli_confirm(display_name, device_info, target_ip):
+        # If we're flashing multiple devices and the user already confirmed, or force_flash is set,
+        # we don't need to ask for each device
+        if (len(target_ips) > 1 or args.force_flash):
+            return True
+
+        # For single device or when force_flash is not set, ask for confirmation
         prompt = f"FLASH {display_name} '{device_info.get('hostname', target_ip)}' ({target_ip})? [y/N]: "
         try:
             return input(prompt).strip().lower().startswith('y')
@@ -487,6 +539,85 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
         confirm_fn=cli_confirm,
         progress_fn=cli_progress
     )
+
+# CSV parsing function
+def parse_csv_file(csv_file_path: str) -> list[str]:
+    """
+    Parse a CSV file containing IP addresses (one per line).
+
+    Args:
+        csv_file_path: Path to the CSV file
+
+    Returns:
+        List of valid IP addresses
+    """
+    from .color_formatter import Colors
+
+    if not csv_file_path:
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: No CSV file path provided{Colors.RESET}")
+        return []
+
+    # Convert to Path object if it's a string
+    csv_path = Path(csv_file_path)
+
+    # Check if the file exists
+    if not csv_path.exists():
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: CSV file not found at {csv_path}{Colors.RESET}")
+        return []
+
+    # Check if the file is readable
+    if not os.access(csv_path, os.R_OK):
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: CSV file is not readable: {csv_path}{Colors.RESET}")
+        return []
+
+    valid_ips = []
+    invalid_entries = []
+
+    try:
+        # Read the file as a simple text file, one IP per line
+        with open(csv_path, 'r') as f:
+            # Use CSV reader to handle different formats
+            reader = csv.reader(f)
+            line_number = 0
+
+            for row in reader:
+                line_number += 1
+
+                # Skip empty rows
+                if not row:
+                    continue
+
+                # Get the first column (IP address)
+                ip_str = row[0].strip() if row else ""
+
+                # Skip empty or commented lines
+                if not ip_str or ip_str.startswith('#'):
+                    continue
+
+                # Validate IP address
+                try:
+                    # This will raise an exception if the IP is invalid
+                    ipaddress.ip_address(ip_str)
+                    valid_ips.append(ip_str)
+                except ValueError:
+                    invalid_entries.append((line_number, ip_str))
+
+        # Log results
+        if valid_ips:
+            logger.info(f"Successfully parsed {len(valid_ips)} valid IP addresses from {csv_path}")
+        else:
+            logger.error(f"{Colors.BRIGHT_RED}ERROR: No valid IP addresses found in {csv_path}{Colors.RESET}")
+
+        if invalid_entries:
+            logger.warning(f"{Colors.BRIGHT_YELLOW}WARNING: Found {len(invalid_entries)} invalid entries in {csv_path}:{Colors.RESET}")
+            for line_num, entry in invalid_entries:
+                logger.warning(f"{Colors.BRIGHT_YELLOW}  Line {line_num}: '{entry}'{Colors.RESET}")
+
+        return valid_ips
+
+    except Exception as e:
+        logger.error(f"{Colors.BRIGHT_RED}ERROR: Failed to parse CSV file {csv_path}: {e}{Colors.RESET}")
+        return []
 
 # Need to import argparse for type hint
 import argparse
