@@ -17,10 +17,14 @@ The "gold standard" is **reproducible builds**, where identical source code and 
 ## TL;DR Quick-Start
 
 ```bash
-# 1. Build (or update) the local Docker image
+# 1. Clone the repository
+git clone https://github.com/marsmensch/nomadbuild.git
+cd nomadbuild
+
+# 2. Build (or update) the local Docker image
 ./nomadbuild.sh --build-image
 
-# 2. Launch the Web-UI
+# 3. Launch the Web-UI
 ./nomadbuild.sh --webui
 ```
 
