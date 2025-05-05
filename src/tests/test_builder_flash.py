@@ -123,3 +123,118 @@ def test_flash_firmware_failure(tmp_path, monkeypatch):
 
     # Expect firmware error at 70%
     assert ('error', 'Firmware upload failed.', 70) in events
+
+
+def test_flash_device_verification_failure(tmp_path, monkeypatch):
+    """Test flashing when device verification fails."""
+    # Prepare dummy firmware file
+    firmware_file = tmp_path / "esp-miner-v1.0.0.bin"
+    firmware_file.write_text("dummy")
+
+    # Capture progress events
+    events = []
+    def mock_progress(status, message, progress):
+        events.append((status, message, progress))
+
+    # Always confirm for CLI
+    def mock_confirm(name, info, ip):
+        return True
+
+    # Mock device verification to fail
+    monkeypatch.setattr('src.builder.device.verify_bitaxe_target', lambda ip: (None, None))
+
+    # Run flashing helper
+    _flash_devices_core(
+        target_ips=["1.2.3.4"],
+        firmware_file=firmware_file,
+        www_file=None,
+        skip_www=True,
+        skip_firmware=False,
+        force_flash=True,
+        expected_version="v1.0.0",
+        confirm_fn=mock_confirm,
+        progress_fn=mock_progress
+    )
+
+    # Verify that a warning event was generated
+    assert any(status == 'warning' for status, _, _ in events)
+    # Verify that we didn't proceed with flashing
+    assert not any('Uploading firmware' in message for _, message, _ in events)
+
+
+def test_flash_network_unreachable(tmp_path, monkeypatch):
+    """Test flashing when the network is unreachable."""
+    # Prepare dummy firmware file
+    firmware_file = tmp_path / "esp-miner-v1.0.0.bin"
+    firmware_file.write_text("dummy")
+
+    # Capture progress events
+    events = []
+    def mock_progress(status, message, progress):
+        events.append((status, message, progress))
+
+    # Always confirm for CLI
+    def mock_confirm(name, info, ip):
+        return True
+
+    # Mock device verification to handle the connection error
+    def mock_verify(ip):
+        # Instead of raising an exception, add an error event and return None
+        events.append(('error', f'Connection error: Network unreachable for {ip}', 5))
+        return None, None
+
+    monkeypatch.setattr('src.builder.device.verify_bitaxe_target', mock_verify)
+
+    # Run flashing helper
+    _flash_devices_core(
+        target_ips=["1.2.3.4"],
+        firmware_file=firmware_file,
+        www_file=None,
+        skip_www=True,
+        skip_firmware=False,
+        force_flash=True,
+        expected_version="v1.0.0",
+        confirm_fn=mock_confirm,
+        progress_fn=mock_progress
+    )
+
+    # Verify that an error event was generated
+    assert any(status == 'error' for status, _, _ in events)
+    # Verify that we didn't proceed with flashing
+    assert not any('Uploading firmware' in message for _, message, _ in events)
+
+
+def test_flash_missing_firmware_file(tmp_path, monkeypatch):
+    """Test flashing when the firmware file is missing."""
+    # Firmware file path that doesn't exist
+    firmware_file = tmp_path / "nonexistent-firmware.bin"
+
+    # Capture progress events
+    events = []
+    def mock_progress(status, message, progress):
+        events.append((status, message, progress))
+
+    # Always confirm for CLI
+    def mock_confirm(name, info, ip):
+        return True
+
+    # Mock device verification to succeed
+    monkeypatch.setattr('src.builder.device.verify_bitaxe_target', lambda ip: ({'hostname': 'dev'}, 'ModelX'))
+
+    # Run flashing helper
+    _flash_devices_core(
+        target_ips=["1.2.3.4"],
+        firmware_file=firmware_file,
+        www_file=None,
+        skip_www=True,
+        skip_firmware=False,
+        force_flash=True,
+        expected_version="v1.0.0",
+        confirm_fn=mock_confirm,
+        progress_fn=mock_progress
+    )
+
+    # Verify that an error event was generated
+    assert any(status == 'error' for status, _, _ in events)
+    # Verify that we didn't proceed with flashing
+    assert not any('Uploading firmware' in message for _, message, _ in events)

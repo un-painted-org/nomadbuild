@@ -83,6 +83,8 @@ Always use the provided `./scripts/test.sh` script to run tests, which ensures t
 | Build orchestration | `src/tests/test_builder_*` |
 | Git operations | `src/tests/test_builder_git_ops.py` |
 | Device helpers | `src/tests/test_builder_device.py` |
+| CSV flashing | `src/tests/test_flash_csv.py` |
+| Flash verification | `src/tests/test_flash_verification_failure.py` |
 | Web-UI socket events | `src/tests/test_web_ui.py` |
 
-All tests must pass ( `pytest -q` reports `77 passed` ) before merging or tagging a release.
+All tests must pass (currently over 140 tests) before merging or tagging a release.

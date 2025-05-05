@@ -49,10 +49,12 @@ See detailed instructions in [docs/USAGE.md](docs/USAGE.md).
 
 ## Features
 
-* 100 % reproducible builds from upstream ESP-Miner sources
+* 100% reproducible builds from upstream ESP-Miner sources
 * One-click flashing over LAN
+* CSV-based multi-device flashing
+* Strict device verification and compatibility checks
 * Cancelable builds, progress bar, realtime logs
-* More but I'm not yet done with the docs ;-)
+* Comprehensive test suite with over 140 tests
 
 ## Test cases
 

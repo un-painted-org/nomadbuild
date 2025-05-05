@@ -33,10 +33,12 @@ def test_args_flash_ip_single(mocker):
     args = parse_args(mocker, ['--flash-ip', '192.168.1.100'])
     assert args.flash_ip == '192.168.1.100'
 
+# This test is no longer valid since --flash-ip now only accepts a single IP address
+# The shell script will reject comma-separated IPs before they reach the Python code
 def test_args_flash_ip_multiple(mocker):
-    # Test comma separation is handled by the main logic, parser gets single string
-    args = parse_args(mocker, ['--flash-ip', '1.1.1.1,2.2.2.2'])
-    assert args.flash_ip == '1.1.1.1,2.2.2.2'
+    # Now we expect the parser to get a single IP, not a comma-separated list
+    args = parse_args(mocker, ['--flash-ip', '1.1.1.1'])
+    assert args.flash_ip == '1.1.1.1'
 
 def test_args_flags(mocker):
     args = parse_args(mocker, [
@@ -64,4 +66,4 @@ def test_args_invalid_log_level(mocker):
 def test_args_unknown_flag(mocker):
     """Unknown flags should trigger argparse error and SystemExit."""
     with pytest.raises(SystemExit):
-        parse_args(mocker, ['--nonexistent']) 
+        parse_args(mocker, ['--nonexistent'])

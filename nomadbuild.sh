@@ -65,7 +65,7 @@ Actions:
   --webui               Start web UI (Recommended)
   --build               Build latest firmware (Default if no other action)
   --tag <VERSION>       Build specific firmware version (e.g., v2.6.3)
-  --flash-ip <IP>       Flash firmware to device at <IP> (cannot be used with --flash-csv)
+  --flash-ip <IP>       Flash firmware to a single device at <IP> (cannot be used with --flash-csv)
   --flash-csv <FILE>    Flash firmware to multiple devices using IP addresses from a CSV file (cannot be used with --flash-ip)
   --restart-webui       Restart web UI (stops existing container)
   --build-image [clean] Only build/rebuild the Docker image
@@ -126,6 +126,11 @@ while [[ $# -gt 0 ]]; do
             DOCKER_CMD_ARGS+=("--tag" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
         --flash-ip)
              if [[ -z "$2" || "$2" == --* ]]; then echo "Error: --flash-ip requires an argument." >&2; show_help; fi
+            # Check if the IP contains commas (multiple IPs)
+            if [[ "$2" == *","* ]]; then
+                echo "Error: --flash-ip only accepts a single IP address. For multiple devices, use --flash-csv instead." >&2
+                exit 1
+            fi
             DOCKER_CMD_ARGS+=("--flash-ip" "$2"); HAS_ACTION_FLAG=true; HAS_FLASH_IP=true; shift 2 ;;
         --flash-csv)
              if [[ -z "$2" || "$2" == --* ]]; then echo "Error: --flash-csv requires an argument." >&2; show_help; fi
@@ -658,6 +663,7 @@ while [ $i -lt ${#DOCKER_CMD_ARGS[@]} ]; do
 
             # Create a temporary container to copy the CSV file
             echo "Preparing CSV file for use: $CSV_FILE_NAME"
+            echo "LOADING ESP-IDF environment (may take a moment)..."
 
             # Create a temporary container
             TEMP_CONTAINER_ID=$(docker create "$IMAGE_NAME")

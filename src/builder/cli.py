@@ -163,7 +163,7 @@ def _parse_arguments():
 
     # Create a mutually exclusive group for flash targets
     flash_group = parser.add_mutually_exclusive_group()
-    flash_group.add_argument("--flash-ip", help="Comma-separated IP addresses of devices to flash")
+    flash_group.add_argument("--flash-ip", help="IP address of a single device to flash")
     flash_group.add_argument("--flash-csv", help="Path to CSV file containing IP addresses of devices to flash (one per line)")
 
     parser.add_argument("--skip-firmware", action="store_true", help="Skip flashing main firmware during update")

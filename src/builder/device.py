@@ -421,15 +421,15 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
     # Get target IPs from either --flash-ip or --flash-csv
     target_ips = []
 
-    # Process --flash-ip parameter (comma-separated list)
+    # Process --flash-ip parameter (single IP address)
     if args.flash_ip:
-        target_ips = [ip.strip() for ip in args.flash_ip.split(',') if ip.strip()]
-        logger.info(f"Found {len(target_ips)} IP addresses from --flash-ip parameter")
+        target_ips = [args.flash_ip.strip()]
+        logger.info(f"Using IP address from --flash-ip parameter: {target_ips[0]}")
 
     # Process --flash-csv parameter (CSV file)
     if args.flash_csv:
         target_ips = parse_csv_file(args.flash_csv)
-        logger.info(f"Found {len(target_ips)} IP addresses from CSV file")
+        # Note: parse_csv_file already logs the number of IPs found, so we don't need to log it again here
 
     # Check if we have any valid IPs
     if not target_ips:
@@ -455,13 +455,13 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
         print(f"{Colors.BOLD}Version:{Colors.RESET}       {Colors.BRIGHT_CYAN}{expected_version}{Colors.RESET}")
 
     # Display flash operation details
-    print(f"{Colors.BOLD}Devices:{Colors.RESET}        {Colors.BRIGHT_CYAN}{len(target_ips)} device(s) configured{Colors.RESET}")
+    print(f"{Colors.BOLD}Devices:{Colors.RESET}       {Colors.BRIGHT_CYAN}{len(target_ips)} device(s) configured{Colors.RESET}")
 
     # Show all IPs if there are 5 or fewer, otherwise show the first 5 and a count
     if len(target_ips) <= 5:
-        print(f"{Colors.BOLD}Target IPs:{Colors.RESET}     {Colors.BRIGHT_CYAN}{', '.join(target_ips)}{Colors.RESET}")
+        print(f"{Colors.BOLD}Target IPs:{Colors.RESET}    {Colors.BRIGHT_CYAN}{', '.join(target_ips)}{Colors.RESET}")
     else:
-        print(f"{Colors.BOLD}Target IPs:{Colors.RESET}     {Colors.BRIGHT_CYAN}{', '.join(target_ips[:5])}... and {len(target_ips) - 5} more{Colors.RESET}")
+        print(f"{Colors.BOLD}Target IPs:{Colors.RESET}    {Colors.BRIGHT_CYAN}{', '.join(target_ips[:5])}... and {len(target_ips) - 5} more{Colors.RESET}")
 
     # Display what will be flashed
     components = []
@@ -471,9 +471,9 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
         components.append("web UI")
 
     if components:
-        print(f"{Colors.BOLD}Components:{Colors.RESET}     {Colors.BRIGHT_CYAN}{' and '.join(components)}{Colors.RESET}")
+        print(f"{Colors.BOLD}Components:{Colors.RESET}    {Colors.BRIGHT_CYAN}{' and '.join(components)}{Colors.RESET}")
     else:
-        print(f"{Colors.BOLD}Components:{Colors.RESET}     {Colors.BRIGHT_YELLOW}None (both firmware and web UI are skipped){Colors.RESET}")
+        print(f"{Colors.BOLD}Components:{Colors.RESET}    {Colors.BRIGHT_YELLOW}None (both firmware and web UI are skipped){Colors.RESET}")
 
     print("=" * 60 + "\n")
 

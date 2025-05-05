@@ -52,7 +52,7 @@ You can flash multiple devices at once using a CSV file:
 ./nomadbuild.sh --tag v2.6.1 --flash-csv devices.csv
 ```
 
-**Note**: The `--flash-csv` and `--flash-ip` options are mutually exclusive. You can use one or the other, but not both at the same time.
+**Note**: The `--flash-csv` and `--flash-ip` options are mutually exclusive. Use `--flash-ip` for a single device or `--flash-csv` for multiple devices. The `--flash-ip` option only accepts a single IP address.
 
 The CSV file should contain one IP address per line. Comments (lines starting with #) and empty lines are ignored.
 
@@ -67,3 +67,11 @@ Example CSV file:
 ```
 
 The CSV file can be located anywhere on your system - it will be copied into the container for processing.
+
+### Important Notes on Flashing
+
+- The system performs strict device verification before flashing to ensure compatibility
+- Each device is verified to be a supported Bitaxe model
+- The system will detect and report network connectivity issues
+- After flashing, the system verifies that the device comes back online with the expected firmware version
+- For multiple devices, you'll be asked for batch confirmation before proceeding
