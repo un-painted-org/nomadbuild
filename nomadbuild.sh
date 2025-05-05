@@ -65,8 +65,8 @@ Actions:
   --webui               Start web UI (Recommended)
   --build               Build latest firmware (Default if no other action)
   --tag <VERSION>       Build specific firmware version (e.g., v2.6.3)
-  --flash-ip <IP>       Flash firmware to device at <IP>
-  --flash-csv <FILE>    Flash firmware to multiple devices using IP addresses from a CSV file
+  --flash-ip <IP>       Flash firmware to device at <IP> (cannot be used with --flash-csv)
+  --flash-csv <FILE>    Flash firmware to multiple devices using IP addresses from a CSV file (cannot be used with --flash-ip)
   --restart-webui       Restart web UI (stops existing container)
   --build-image [clean] Only build/rebuild the Docker image
                         Add 'clean' to remove existing image and firmware files (e.g., after upgrade)
@@ -112,6 +112,10 @@ for arg in "$@"; do
     fi
 done
 
+# Variables to track flash options
+HAS_FLASH_IP=false
+HAS_FLASH_CSV=false
+
 # Process other arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -122,10 +126,10 @@ while [[ $# -gt 0 ]]; do
             DOCKER_CMD_ARGS+=("--tag" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
         --flash-ip)
              if [[ -z "$2" || "$2" == --* ]]; then echo "Error: --flash-ip requires an argument." >&2; show_help; fi
-            DOCKER_CMD_ARGS+=("--flash-ip" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
+            DOCKER_CMD_ARGS+=("--flash-ip" "$2"); HAS_ACTION_FLAG=true; HAS_FLASH_IP=true; shift 2 ;;
         --flash-csv)
              if [[ -z "$2" || "$2" == --* ]]; then echo "Error: --flash-csv requires an argument." >&2; show_help; fi
-            DOCKER_CMD_ARGS+=("--flash-csv" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
+            DOCKER_CMD_ARGS+=("--flash-csv" "$2"); HAS_ACTION_FLAG=true; HAS_FLASH_CSV=true; shift 2 ;;
         --build-image)
             BUILD_IMAGE=true;
             HAS_ACTION_FLAG=true;
@@ -176,6 +180,14 @@ while [[ $# -gt 0 ]]; do
             echo "Error: Unknown option: $1" >&2; show_help ;;
     esac
 done
+
+# --- Check for mutually exclusive options ---
+if [ "$HAS_FLASH_IP" = true ] && [ "$HAS_FLASH_CSV" = true ]; then
+    echo "Error: --flash-ip and --flash-csv cannot be used together." >&2
+    echo "Please use either --flash-ip <IP> to flash a single device" >&2
+    echo "or --flash-csv <FILE> to flash multiple devices from a CSV file." >&2
+    exit 1
+fi
 
 # --- Check Flags and Decide Action ---
 ONLY_BUILD_IMAGE=false
