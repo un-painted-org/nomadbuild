@@ -69,7 +69,7 @@ Actions:
   --flash-csv <FILE>    Flash firmware to multiple devices using IP addresses from a CSV file
   --restart-webui       Restart web UI (stops existing container)
   --build-image [clean] Only build/rebuild the Docker image
-                        Add 'clean' to remove existing image first (e.g., after upgrade)
+                        Add 'clean' to remove existing image and firmware files (e.g., after upgrade)
   --test [OPTIONS]      Run tests (passes options to test.sh)
   --repro               Run reproducibility check
   --help                Show this help
@@ -205,6 +205,17 @@ fi
 
 # Handle clean image request
 if [ "$CLEAN_IMAGE" = true ]; then
+    # Clean firmware directory first
+    FIRMWARE_DIR="$PROJECT_ROOT/firmware"
+    if [ -d "$FIRMWARE_DIR" ] && [ -n "$(ls -A "$FIRMWARE_DIR" 2>/dev/null)" ]; then
+        echo "Cleaning firmware directory: $FIRMWARE_DIR..."
+        rm -rf "$FIRMWARE_DIR"/*
+        echo "Successfully removed all firmware files for a completely fresh build environment."
+    else
+        echo "No firmware files found to clean."
+    fi
+
+    # Then clean Docker image
     if docker image inspect "$IMAGE_NAME" &> /dev/null; then
         echo "Removing existing Docker image: $IMAGE_NAME..."
         if docker rmi -f "$IMAGE_NAME" &> /dev/null; then
@@ -341,11 +352,12 @@ fi
 
 # --- Exit if only build image was requested ---
 if [ "$ONLY_BUILD_IMAGE" = true ]; then
-    # Add a message about existing firmware if it exists
-    if [ -d "$PROJECT_ROOT/firmware" ] && [ -n "$(ls -A "$PROJECT_ROOT/firmware" 2>/dev/null)" ]; then
+    # Add a message about existing firmware if it exists and we didn't clean
+    if [ "$CLEAN_IMAGE" = false ] && [ -d "$PROJECT_ROOT/firmware" ] && [ -n "$(ls -A "$PROJECT_ROOT/firmware" 2>/dev/null)" ]; then
         echo ""
         echo "Note: Existing firmware files have been preserved in the firmware directory."
         echo "To build firmware, run: ./nomadbuild.sh --build"
+        echo "To clean firmware files, run: ./nomadbuild.sh --build-image clean"
     fi
     exit 0
 fi
