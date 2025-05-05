@@ -633,19 +633,19 @@ while [ $i -lt ${#DOCKER_CMD_ARGS[@]} ]; do
             CSV_FILE_NAME=$(basename "$CSV_FILE_PATH")
 
             # Create a temporary container to copy the CSV file
-            echo "Copying CSV file into container: $CSV_FILE_ABS_PATH"
+            echo "Preparing CSV file for use: $CSV_FILE_NAME"
 
             # Create a temporary container
             TEMP_CONTAINER_ID=$(docker create "$IMAGE_NAME")
 
-            # Copy the CSV file into the container
-            docker cp "$CSV_FILE_ABS_PATH" "$TEMP_CONTAINER_ID:/tmp/$CSV_FILE_NAME"
+            # Copy the CSV file into the container (suppress detailed output)
+            docker cp "$CSV_FILE_ABS_PATH" "$TEMP_CONTAINER_ID:/tmp/$CSV_FILE_NAME" > /dev/null
 
-            # Commit the container as a new temporary image
+            # Commit the container as a new temporary image (suppress detailed output)
             TEMP_IMAGE_NAME="nomadbuild-with-csv:temp"
-            docker commit "$TEMP_CONTAINER_ID" "$TEMP_IMAGE_NAME"
+            docker commit "$TEMP_CONTAINER_ID" "$TEMP_IMAGE_NAME" > /dev/null
 
-            # Remove the temporary container
+            # Remove the temporary container (suppress detailed output)
             docker rm "$TEMP_CONTAINER_ID" > /dev/null
 
             # Update the argument to use the container path
@@ -673,10 +673,10 @@ fi
 # Run the container
 docker run -it --rm -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME_TO_USE" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
 
-# Clean up temporary image if created
+# Clean up temporary image if created (suppress detailed output)
 if [ "$REMOVE_TEMP_IMAGE" = true ]; then
-    echo "Cleaning up temporary container image"
-    docker rmi "$TEMP_IMAGE_NAME" > /dev/null
+    # No need to show this message to the user
+    docker rmi "$TEMP_IMAGE_NAME" > /dev/null 2>&1
 fi
 
 EXIT_CODE=$?
