@@ -1,0 +1,64 @@
+name: Documentation Issue
+description: Report issues with the documentation or suggest improvements
+title: "[DOCS]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping us improve our documentation! Please provide details about what needs to be updated or corrected.
+  
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type of Documentation Issue
+      description: What type of documentation issue is this?
+      options:
+        - Error or inaccuracy
+        - Missing information
+        - Unclear explanation
+        - Outdated content
+        - Formatting or organization
+        - Other (specify in description)
+    validations:
+      required: true
+  
+  - type: input
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Where is the documentation that needs to be improved? Provide a link or file path.
+      placeholder: https://github.com/marsmensch/nomadbuild/blob/main/docs/USAGE.md or docs/USAGE.md
+    validations:
+      required: true
+  
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Content
+      description: What does the current documentation say? Copy and paste the relevant section.
+      placeholder: The current documentation states...
+  
+  - type: textarea
+    id: suggested
+    attributes:
+      label: Suggested Changes
+      description: What changes would you like to see? Provide your suggested wording or content.
+      placeholder: I suggest changing it to...
+    validations:
+      required: true
+  
+  - type: textarea
+    id: reason
+    attributes:
+      label: Reason for Change
+      description: Why do you think this change is needed?
+      placeholder: This change is needed because...
+    validations:
+      required: true
+  
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Any other context or information that might be helpful.

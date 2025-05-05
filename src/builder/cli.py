@@ -9,9 +9,14 @@ import sys
 import platform
 import os # Needed for path joining
 import json
+import subprocess
 
 # Import functions from other builder modules
 from .utils import setup_environment, get_env_dir, LOG_FILE_NAME, CONTAINER_OUTPUT_DIR, BUILD_INFO_FILE # Added constants
+from pathlib import Path
+
+# Constants
+CONTAINER_APP_DIR = Path("/app")
 # Import the specific function we need
 from .utils import copy_artifacts_to_output, create_and_save_build_info
 # Adjusted import to include the moved function
@@ -22,7 +27,7 @@ from .device import _handle_flashing, load_models_config # Import from correct m
 
 # Logger setup: Get the root logger
 # Basic config will be overridden in _setup_logging
-logging.basicConfig() 
+logging.basicConfig()
 # Get the root logger instead of a module-specific one
 logger = logging.getLogger() # <-- Get root logger
 
@@ -35,7 +40,7 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
     selected_tag = args.tag
     expected_version = None
     miner_repo_path = None
-    perform_build = False 
+    perform_build = False
 
     # Determine if a build needs to be performed
     if args.tag or args.force_rebuild:
@@ -65,7 +70,7 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
             perform_build = True
             selected_tag = None
 
-    # --- Perform Build OR Load Info --- 
+    # --- Perform Build OR Load Info ---
     if perform_build:
         logger.info("--- Build Process Required --- ")
         logger.info("Fetching Source Code...")
@@ -74,7 +79,7 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
         if not selected_tag:
             logger.info("Determining latest stable tag...")
             stable_tags = builder_git.get_esp_miner_stable_tags(miner_repo_path)
-            if not stable_tags: 
+            if not stable_tags:
                 logger.critical("Build failed: No stable tags available and none specified.")
                 sys.exit("Build failed: No stable tags available.")
             selected_tag = stable_tags[0]
@@ -92,23 +97,23 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
         logger.info("\n--- Starting Build Phase --- ")
         # build_esp_miner now returns: (build_dir, commit_hash, partition_csv_path, flasher_args_path, expected_version)
         build_dir, commit_hash, partition_csv_path, flasher_args_path, expected_version = build_esp_miner(miner_repo_path, selected_tag, args.verbose_build)
-        
+
         # Check if build was cancelled (indicated by None return values)
         if build_dir is None: # Check the first element which should be Path or None
             logger.warning("Build was cancelled or failed upstream. Aborting build handling.")
             # Exit or raise? Let's exit cleanly if cancelled, maybe raise otherwise?
             # For now, assuming None means cancellation.
-            sys.exit("Build process cancelled or failed.") 
-            
+            sys.exit("Build process cancelled or failed.")
+
         # Validate required paths after successful build
         if not all([build_dir, partition_csv_path, flasher_args_path, expected_version]):
             logger.critical("Build result tuple missing expected values after successful build.")
             sys.exit("Build failed due to incomplete build results.")
-        
+
         logger.info(f"Build successful for tag {selected_tag}. Expected version: {expected_version}")
         # Pass the correct build_dir (Path object) to analyze_build_output
         analyze_build_output(build_dir, flasher_args_path, partition_csv_path)
-        
+
         logger.info("Copying build artifacts to output directory...")
         copied_artifact_paths = copy_artifacts_to_output(
             firmware_build_path=build_dir, # Pass the correct build_dir
@@ -132,17 +137,17 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
         else:
             logger.info(f"Build information saved successfully for version {build_info.get('version', 'N/A')}.")
             logger.debug(f"Build Info Contents: {build_info}")
-            
+
     else: # Not performing build, using existing info loaded earlier
         logger.info(f"Using existing build artifacts for Tag: {selected_tag}, Version: {expected_version}")
         # No action needed here, vars selected_tag and expected_version are already set
 
-    # --- Final Check & Return --- 
+    # --- Final Check & Return ---
     if not selected_tag or not expected_version:
         # After fallback logic, we must have determined the build target
         logger.critical(f"Internal logic error: Could not determine selected tag ({selected_tag}) or expected version ({expected_version}). Aborting.")
         sys.exit("Failed to establish build target due to internal logic error.")
-         
+
     logger.info(f"Proceeding with Tag: {selected_tag}, Expected Version: {expected_version}")
     return selected_tag, expected_version
 
@@ -158,6 +163,8 @@ def _parse_arguments():
     parser.add_argument("--skip-www", action="store_true", help="Skip flashing web UI...")
     parser.add_argument("--force-flash", action="store_true", help="Force flashing without confirmation...")
     parser.add_argument("--verbose-build", action="store_true", help="Stream idf.py output...")
+    # Add reproducibility command options
+    parser.add_argument("--repro", action="store_true", help="Run reproducibility check for a specific tag")
     return parser.parse_args()
 
 def _setup_logging(args: argparse.Namespace):
@@ -167,46 +174,94 @@ def _setup_logging(args: argparse.Namespace):
     log_file_path = log_dir / LOG_FILE_NAME
     log_level_file = getattr(logging, args.log_level.upper(), logging.DEBUG)
     log_level_console = logging.WARNING if args.quiet else logging.INFO
-    
+
     # Configure the root logger
     root_logger = logging.getLogger() # Get root logger again just to be explicit
     root_logger.setLevel(logging.DEBUG) # Set lowest level to capture everything initially
-    
+
     # Remove existing handlers attached to the root logger (e.g., from basicConfig)
-    for handler in root_logger.handlers[:]: 
+    for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
         handler.close()
-        
+
     # File Handler
     fh = logging.FileHandler(log_file_path, mode='w')
     fh.setLevel(log_level_file)
     file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s') # Include logger name in file
     fh.setFormatter(file_formatter)
     root_logger.addHandler(fh)
-    
+
     # Console Handler
     ch = logging.StreamHandler(sys.stdout)
     ch.setLevel(log_level_console)
     console_formatter = logging.Formatter('%(levelname)s: %(message)s') # Keep console simple
     ch.setFormatter(console_formatter)
     root_logger.addHandler(ch)
-    
+
     # Log the completion message using the configured root logger
     root_logger.debug(f"Root logger setup complete. File Level: {logging.getLevelName(log_level_file)}, Console Level: {logging.getLevelName(log_level_console)}")
+
+def _handle_reproducibility_check(args: argparse.Namespace):
+    """Handles reproducibility check logic."""
+    if not args.tag:
+        logger.error("Reproducibility check requires a tag. Use --tag <VERSION>")
+        sys.exit(1)
+
+    logger.info(f"Running reproducibility check for tag: {args.tag}")
+
+    # Call the run_repro_check.sh script
+    run_repro_script_path = CONTAINER_APP_DIR / "scripts" / "run_repro_check.sh"
+    if not run_repro_script_path.exists():
+        logger.error(f"Reproducibility check script not found at {run_repro_script_path}")
+        sys.exit(1)
+
+    # Make sure the script is executable
+    try:
+        os.chmod(run_repro_script_path, 0o755)
+    except Exception as e:
+        logger.warning(f"Could not make script executable: {e}")
+
+    # Use run_command from utils to run the script
+    from .utils import run_command
+
+    cmd = ["/bin/bash", str(run_repro_script_path), "--tag", args.tag]
+
+    try:
+        logger.info("Starting reproducibility check...")
+        # Set check=False to handle the exit code ourselves
+        result = run_command(cmd, check=False, stream_output=True)
+
+        # Check the exit code
+        if result is None or result.returncode != 0:
+            logger.error(f"Reproducibility check failed with exit code {result.returncode if result else 'unknown'}")
+            sys.exit(result.returncode if result else 1)
+        else:
+            logger.info("Reproducibility check completed successfully.")
+    except Exception as e:
+        logger.error(f"Error running reproducibility check: {e}")
+        sys.exit(1)
+
+
 
 def main():
     """Main entry point for the CLI application."""
     args = _parse_arguments()
     _setup_logging(args) # Setup root logger
-    
+
     # Now subsequent logger calls (including those in imported modules) will use the root config
     logger.info("--- NomadBuild Local Builder & Flasher (CLI) --- ")
     logger.debug(f"Command line arguments: {args}")
     logger.info(f"Platform: {platform.system()} {platform.machine()}")
-    
-    load_models_config() 
-    setup_environment() 
 
+    load_models_config()
+    setup_environment()
+
+    # Handle reproducibility commands
+    if args.repro:
+        _handle_reproducibility_check(args)
+        return
+
+    # Normal build and flash flow
     selected_tag, expected_version = _handle_build_or_use_existing(args)
 
     # Pass necessary args to _handle_flashing (from device.py)
@@ -216,4 +271,4 @@ def main():
 
 if __name__ == "__main__":
     # Basic config might run before _setup_logging, but _setup_logging will remove its handlers
-    main() 
+    main()

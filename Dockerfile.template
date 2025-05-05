@@ -1,90 +1,90 @@
 # Use the official ESP-IDF image matching the version used in ESP-Miner devcontainer
 # Reference: https://github.com/bitaxeorg/ESP-Miner/blob/master/.devcontainer/Dockerfile
 # BUT with a sha256 hash to make sure it does not change
-FROM espressif/idf@sha256:6b4adab7b282e9261a154d7130fb4945a3c28bd35c2e914357c2f522643cb92a AS builder
+FROM espressif/idf@${BASE_IMAGE_DIGEST} AS builder
 
 # Set build arguments for all versions (populated from config.yaml)
-ARG TZ=UTC
-ARG LC_ALL=C.UTF-8
-ARG LANG=C.UTF-8
-ARG PYTHONHASHSEED=0
+ARG TZ=${TZ}
+ARG LC_ALL=${LC_ALL}
+ARG LANG=${LANG}
+ARG PYTHONHASHSEED=${PYTHONHASHSEED}
 
 # APT package versions
-ARG CA_CERTIFICATES=20240203
-ARG CURL=8.5.0-2ubuntu10.6
-ARG GNUPG=2.4.4-2ubuntu17
-ARG PANDOC=3.1.3+ds-2
-ARG PERL=5.38.2-3.2build2.1
-ARG PYTHON3_PIP=24.0+dfsg-1ubuntu1
-ARG PYTHON3_VENV=3.12.3-0ubuntu2
-ARG NODEJS=22.15.0-1nodesource1
+ARG CA_CERTIFICATES=${CA_CERTIFICATES}
+ARG CURL=${CURL}
+ARG GNUPG=${GNUPG}
+ARG PANDOC=${PANDOC}
+ARG PERL=${PERL}
+ARG PYTHON3_PIP=${PYTHON3_PIP}
+ARG PYTHON3_VENV=${PYTHON3_VENV}
+ARG NODEJS=${NODEJS}
 
 # Toolchain versions
-ARG GCC=13.3.0
-ARG CMAKE=3.30.2
-ARG OBJCOPY=2.42
-ARG PYTHON3=3.12.3
+ARG GCC=${GCC}
+ARG CMAKE=${CMAKE}
+ARG OBJCOPY=${OBJCOPY}
+ARG PYTHON3=${PYTHON3}
 
 # Python package versions
-ARG FLASK=3.1.0
-ARG FLASK_SOCKETIO=5.5.1
-ARG PYTEST=8.3.5
-ARG PYTEST_MOCK=3.14.0
-ARG PYTEST_SUGAR=1.0.0
-ARG REQUESTS=2.32.3
-ARG WERKZEUG=3.1.3
-ARG JINJA2=3.1.6
-ARG ITSDANGEROUS=2.2.0
-ARG BLINKER=1.9.0
-ARG PYTHON_SOCKETIO=5.13.0
-ARG PYTHON_ENGINEIO=4.12.0
-ARG BIDICT=0.23.1
-ARG SIMPLE_WEBSOCKET=1.1.0
-ARG H11=0.14.0
-ARG WSPROTO=1.2.0
-ARG PYYAML=6.0.1
-ARG ESP_IDF_MONITOR=1.6.2
-ARG IDF_COMPONENT_MANAGER=2.1.0
-ARG KCONFIGLIB=14.1.0
+ARG FLASK=${FLASK}
+ARG FLASK_SOCKETIO=${FLASK_SOCKETIO}
+ARG PYTEST=${PYTEST}
+ARG PYTEST_MOCK=${PYTEST_MOCK}
+ARG PYTEST_SUGAR=${PYTEST_SUGAR}
+ARG REQUESTS=${REQUESTS}
+ARG WERKZEUG=${WERKZEUG}
+ARG JINJA2=${JINJA2}
+ARG ITSDANGEROUS=${ITSDANGEROUS}
+ARG BLINKER=${BLINKER}
+ARG PYTHON_SOCKETIO=${PYTHON_SOCKETIO}
+ARG PYTHON_ENGINEIO=${PYTHON_ENGINEIO}
+ARG BIDICT=${BIDICT}
+ARG SIMPLE_WEBSOCKET=${SIMPLE_WEBSOCKET}
+ARG H11=${H11}
+ARG WSPROTO=${WSPROTO}
+ARG PYYAML=${PYYAML}
+ARG ESP_IDF_MONITOR=${ESP_IDF_MONITOR}
+ARG IDF_COMPONENT_MANAGER=${IDF_COMPONENT_MANAGER}
+ARG KCONFIGLIB=${KCONFIGLIB}
 
 # Set environment variables to non-interactive (avoids prompts during apt-get)
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Reproducibility: guarantee consistent locale, timezone and hash seed
-ENV TZ=UTC \
-    LC_ALL=C.UTF-8 \
-    LANG=C.UTF-8 \
-    PYTHONHASHSEED=0
+ENV TZ=${TZ} \
+    LC_ALL=${LC_ALL} \
+    LANG=${LANG} \
+    PYTHONHASHSEED=${PYTHONHASHSEED}
 
 # Install Node.js and required packages in a single layer to reduce image size
 USER root
 RUN mkdir -p /etc/apt/preferences.d /etc/apt/keyrings /container_only/config && \
     # Create apt preferences files for pinning
-    echo "Package: ca-certificates\nPin: version 20240203\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-ca-certificates && \
-    echo "Package: curl\nPin: version 8.5.0-2ubuntu10.6\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-curl && \
-    echo "Package: gnupg\nPin: version 2.4.4-2ubuntu17\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-gnupg && \
-    echo "Package: pandoc\nPin: version 3.1.3+ds-2\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-pandoc && \
-    echo "Package: perl\nPin: version 5.38.2-3.2build2.1\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-perl && \
-    echo "Package: python3-pip\nPin: version 24.0+dfsg-1ubuntu1\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-python3-pip && \
-    echo "Package: python3-venv\nPin: version 3.12.3-0ubuntu2\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-python3-venv && \
-    echo "Package: nodejs\nPin: version 22.15.0-1nodesource1\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-nodejs && \
+    echo "Package: ca-certificates\nPin: version ${CA_CERTIFICATES}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-ca-certificates && \
+    echo "Package: curl\nPin: version ${CURL}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-curl && \
+    echo "Package: gnupg\nPin: version ${GNUPG}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-gnupg && \
+    echo "Package: pandoc\nPin: version ${PANDOC}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-pandoc && \
+    echo "Package: perl\nPin: version ${PERL}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-perl && \
+    echo "Package: python3-pip\nPin: version ${PYTHON3_PIP}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-python3-pip && \
+    echo "Package: python3-venv\nPin: version ${PYTHON3_VENV}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-python3-venv && \
+    echo "Package: nodejs\nPin: version ${NODEJS}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-nodejs && \
     # Create pin configuration files for verification
     echo "# Pin exact versions of CLI tools for reproducible builds" > /container_only/config/toolchain_pins.conf && \
-    echo "gcc=13.3.0" >> /container_only/config/toolchain_pins.conf && \
-    echo "cmake=3.30.2" >> /container_only/config/toolchain_pins.conf && \
-    echo "objcopy=2.42" >> /container_only/config/toolchain_pins.conf && \
-    echo "python3=3.12.3" >> /container_only/config/toolchain_pins.conf && \
-    echo "base_image=sha256:6b4adab7b282e9261a154d7130fb4945a3c28bd35c2e914357c2f522643cb92a" >> /container_only/config/toolchain_pins.conf && \
+    echo "gcc=${GCC}" >> /container_only/config/toolchain_pins.conf && \
+    echo "cmake=${CMAKE}" >> /container_only/config/toolchain_pins.conf && \
+    echo "objcopy=${OBJCOPY}" >> /container_only/config/toolchain_pins.conf && \
+    echo "python3=${PYTHON3}" >> /container_only/config/toolchain_pins.conf && \
+    echo "base_image=${BASE_IMAGE_DIGEST}" >> /container_only/config/toolchain_pins.conf && \
     # Create apt_pins.conf
     echo "# APT packages with pinned versions" > /container_only/config/apt_pins.conf && \
-    echo "ca-certificates=20240203" >> /container_only/config/apt_pins.conf && \
-    echo "curl=8.5.0-2ubuntu10.6" >> /container_only/config/apt_pins.conf && \
-    echo "gnupg=2.4.4-2ubuntu17" >> /container_only/config/apt_pins.conf && \
-    echo "pandoc=3.1.3+ds-2" >> /container_only/config/apt_pins.conf && \
-    echo "perl=5.38.2-3.2build2.1" >> /container_only/config/apt_pins.conf && \
-    echo "python3-pip=24.0+dfsg-1ubuntu1" >> /container_only/config/apt_pins.conf && \
-    echo "python3-venv=3.12.3-0ubuntu2" >> /container_only/config/apt_pins.conf && \
-    echo "nodejs=22.15.0-1nodesource1" >> /container_only/config/apt_pins.conf && \
+    echo "ca-certificates=${CA_CERTIFICATES}" >> /container_only/config/apt_pins.conf && \
+    echo "curl=${CURL}" >> /container_only/config/apt_pins.conf && \
+    echo "gnupg=${GNUPG}" >> /container_only/config/apt_pins.conf && \
+    echo "pandoc=${PANDOC}" >> /container_only/config/apt_pins.conf && \
+    echo "perl=${PERL}" >> /container_only/config/apt_pins.conf && \
+    echo "python3-pip=${PYTHON3_PIP}" >> /container_only/config/apt_pins.conf && \
+    echo "python3-venv=${PYTHON3_VENV}" >> /container_only/config/apt_pins.conf && \
+    echo "nodejs=${NODEJS}" >> /container_only/config/apt_pins.conf && \
     # Install packages
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -115,13 +115,13 @@ ENV VENV_PATH=/opt/venv
 RUN python3 -m venv $VENV_PATH && \
     # Install Python dependencies in a single layer with no cache
     $VENV_PATH/bin/pip install --no-cache-dir \
-    flask==3.1.0 flask-socketio==5.5.1 pytest==8.3.5 pytest-mock==3.14.0 pytest-sugar==1.0.0 \
-    requests==2.32.3 werkzeug==3.1.3 jinja2==3.1.6 itsdangerous==2.2.0 \
-    blinker==1.9.0 python-socketio==5.13.0 python-engineio==4.12.0 \
-    bidict==0.23.1 simple-websocket==1.1.0 h11==0.14.0 wsproto==1.2.0 \
-    pyyaml==6.0.1 esp-idf-monitor==1.6.2 \
-    idf-component-manager==2.1.0 \
-    kconfiglib==14.1.0 && \
+    flask==${FLASK} flask-socketio==${FLASK_SOCKETIO} pytest==${PYTEST} pytest-mock==${PYTEST_MOCK} pytest-sugar==${PYTEST_SUGAR} \
+    requests==${REQUESTS} werkzeug==${WERKZEUG} jinja2==${JINJA2} itsdangerous==${ITSDANGEROUS} \
+    blinker==${BLINKER} python-socketio==${PYTHON_SOCKETIO} python-engineio==${PYTHON_ENGINEIO} \
+    bidict==${BIDICT} simple-websocket==${SIMPLE_WEBSOCKET} h11==${H11} wsproto==${WSPROTO} \
+    pyyaml==${PYYAML} esp-idf-monitor==${ESP_IDF_MONITOR} \
+    idf-component-manager==${IDF_COMPONENT_MANAGER} \
+    kconfiglib==${KCONFIGLIB} && \
     # Create symlinks for Python executables
     ln -sf $VENV_PATH/bin/python /usr/local/bin/python && \
     ln -sf $VENV_PATH/bin/python3 /usr/local/bin/python3 && \
@@ -169,14 +169,14 @@ RUN /app/scripts/verify_pinned_versions.sh
 # Start a new stage for the runtime image
 # Re-declare ARG for the new stage
 ARG BASE_IMAGE_DIGEST
-FROM espressif/idf@sha256:6b4adab7b282e9261a154d7130fb4945a3c28bd35c2e914357c2f522643cb92a AS runtime
+FROM espressif/idf@${BASE_IMAGE_DIGEST} AS runtime
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=UTC \
-    LC_ALL=C.UTF-8 \
-    LANG=C.UTF-8 \
-    PYTHONHASHSEED=0 \
+ENV TZ=${TZ} \
+    LC_ALL=${LC_ALL} \
+    LANG=${LANG} \
+    PYTHONHASHSEED=${PYTHONHASHSEED} \
     VENV_PATH=/opt/venv \
     NOMADBUILD_CONFIG_DIR=/container_only/config
 
@@ -184,14 +184,14 @@ ENV TZ=UTC \
 USER root
 RUN mkdir -p /etc/apt/preferences.d /etc/apt/keyrings /container_only/config && \
     # Create apt preferences files for pinning
-    echo "Package: ca-certificates\nPin: version 20240203\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-ca-certificates && \
-    echo "Package: curl\nPin: version 8.5.0-2ubuntu10.6\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-curl && \
-    echo "Package: gnupg\nPin: version 2.4.4-2ubuntu17\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-gnupg && \
-    echo "Package: pandoc\nPin: version 3.1.3+ds-2\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-pandoc && \
-    echo "Package: perl\nPin: version 5.38.2-3.2build2.1\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-perl && \
-    echo "Package: python3-pip\nPin: version 24.0+dfsg-1ubuntu1\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-python3-pip && \
-    echo "Package: python3-venv\nPin: version 3.12.3-0ubuntu2\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-python3-venv && \
-    echo "Package: nodejs\nPin: version 22.15.0-1nodesource1\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-nodejs && \
+    echo "Package: ca-certificates\nPin: version ${CA_CERTIFICATES}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-ca-certificates && \
+    echo "Package: curl\nPin: version ${CURL}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-curl && \
+    echo "Package: gnupg\nPin: version ${GNUPG}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-gnupg && \
+    echo "Package: pandoc\nPin: version ${PANDOC}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-pandoc && \
+    echo "Package: perl\nPin: version ${PERL}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-perl && \
+    echo "Package: python3-pip\nPin: version ${PYTHON3_PIP}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-python3-pip && \
+    echo "Package: python3-venv\nPin: version ${PYTHON3_VENV}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-python3-venv && \
+    echo "Package: nodejs\nPin: version ${NODEJS}\nPin-Priority: 1001" > /etc/apt/preferences.d/pin-nodejs && \
     # Install packages
     apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -217,21 +217,21 @@ RUN mkdir -p /etc/apt/preferences.d /etc/apt/keyrings /container_only/config && 
     mkdir -p /container_only/config /firmware /app && \
     # Create pin configuration files for verification
     echo "# Pin exact versions of CLI tools for reproducible builds" > /container_only/config/toolchain_pins.conf && \
-    echo "gcc=13.3.0" >> /container_only/config/toolchain_pins.conf && \
-    echo "cmake=3.30.2" >> /container_only/config/toolchain_pins.conf && \
-    echo "objcopy=2.42" >> /container_only/config/toolchain_pins.conf && \
-    echo "python3=3.12.3" >> /container_only/config/toolchain_pins.conf && \
-    echo "base_image=sha256:6b4adab7b282e9261a154d7130fb4945a3c28bd35c2e914357c2f522643cb92a" >> /container_only/config/toolchain_pins.conf && \
+    echo "gcc=${GCC}" >> /container_only/config/toolchain_pins.conf && \
+    echo "cmake=${CMAKE}" >> /container_only/config/toolchain_pins.conf && \
+    echo "objcopy=${OBJCOPY}" >> /container_only/config/toolchain_pins.conf && \
+    echo "python3=${PYTHON3}" >> /container_only/config/toolchain_pins.conf && \
+    echo "base_image=${BASE_IMAGE_DIGEST}" >> /container_only/config/toolchain_pins.conf && \
     # Create apt_pins.conf
     echo "# APT packages with pinned versions" > /container_only/config/apt_pins.conf && \
-    echo "ca-certificates=20240203" >> /container_only/config/apt_pins.conf && \
-    echo "curl=8.5.0-2ubuntu10.6" >> /container_only/config/apt_pins.conf && \
-    echo "gnupg=2.4.4-2ubuntu17" >> /container_only/config/apt_pins.conf && \
-    echo "pandoc=3.1.3+ds-2" >> /container_only/config/apt_pins.conf && \
-    echo "perl=5.38.2-3.2build2.1" >> /container_only/config/apt_pins.conf && \
-    echo "python3-pip=24.0+dfsg-1ubuntu1" >> /container_only/config/apt_pins.conf && \
-    echo "python3-venv=3.12.3-0ubuntu2" >> /container_only/config/apt_pins.conf && \
-    echo "nodejs=22.15.0-1nodesource1" >> /container_only/config/apt_pins.conf
+    echo "ca-certificates=${CA_CERTIFICATES}" >> /container_only/config/apt_pins.conf && \
+    echo "curl=${CURL}" >> /container_only/config/apt_pins.conf && \
+    echo "gnupg=${GNUPG}" >> /container_only/config/apt_pins.conf && \
+    echo "pandoc=${PANDOC}" >> /container_only/config/apt_pins.conf && \
+    echo "perl=${PERL}" >> /container_only/config/apt_pins.conf && \
+    echo "python3-pip=${PYTHON3_PIP}" >> /container_only/config/apt_pins.conf && \
+    echo "python3-venv=${PYTHON3_VENV}" >> /container_only/config/apt_pins.conf && \
+    echo "nodejs=${NODEJS}" >> /container_only/config/apt_pins.conf
 
 # Copy Python virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv

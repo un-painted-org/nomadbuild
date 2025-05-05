@@ -134,18 +134,23 @@ ESP-Miner/
 # VS Code
 .vscode/
 
-# Add output directory containing built artifacts 
+# Add output directory containing built artifacts
 
 # Backup and benchmark artifacts
 *.bak
 *.old
-.benchmarks/ 
+.benchmarks/
 archive/     # ignore archived scripts and resources
 .cursor/     # ignore cursor-related temporary files
 # SpecStory explanation file
 .specstory/.what-is-this.md
 backlog.md
 
-# Un-ignore build pin configuration files
-!build/apt_pins.conf
-!build/toolchain_pins.conf
+# Ignore build artifacts
+build/
+build_env/
+apt_pins.conf
+toolchain_pins.conf
+python_pins.conf
+
+

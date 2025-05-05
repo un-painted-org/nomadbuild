@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
             TEST_PATH="/app/src/tests/test_version_*.py"
             shift ;;
         --path)
-            if [[ -z "$2" || "$2" == --* ]]; then 
+            if [[ -z "$2" || "$2" == --* ]]; then
                 echo "Error: --path requires an argument." >&2
                 show_help
             fi
@@ -91,15 +91,18 @@ else
     echo "Docker image '$IMAGE_NAME' found locally."
 fi
 
-# Verify base image digest matches the pinned configuration
-bash "$SCRIPT_DIR/verify_base_image_digest.sh" "$PROJECT_ROOT/build/toolchain_pins.conf"
+# Set up environment variables for the container
+export NOMADBUILD_CONFIG_DIR="/tmp/nomadbuild_config"
+
+# Note: We don't run verify_base_image_digest.sh on the host
+# It will be run inside the container where the environment check will pass
 
 echo "--- Running Pytest ---"
 echo "Test path: $TEST_PATH"
 
 # Pytest and dependencies are installed globally via Dockerfile
 # Clear .pyc files and run pytest targeting the correct directory with ESP-IDF environment
-CMD_INSIDE_CONTAINER="source \$IDF_PATH/export.sh > /dev/null 2>&1 && source /opt/venv/bin/activate && export PYTHONDONTWRITEBYTECODE=1 && find /app -name '*.pyc' -delete && bash /app/scripts/verify_pinned_versions.sh /app/build/apt_pins.conf && bash /app/scripts/verify_toolchain_versions.sh /app/build/toolchain_pins.conf && python3 -m pip install -q pytest-sugar && /opt/venv/bin/python -B -m pytest -q --disable-warnings --tb=short --durations=10 --color=yes --cache-clear \$TEST_PATH"
+CMD_INSIDE_CONTAINER="source \$IDF_PATH/export.sh > /dev/null 2>&1 && source /opt/venv/bin/activate && export PYTHONDONTWRITEBYTECODE=1 && find /app -name '*.pyc' -delete && export NOMADBUILD_CONFIG_DIR=/tmp/nomadbuild_config && mkdir -p \$NOMADBUILD_CONFIG_DIR && bash /app/scripts/verify_base_image_digest.sh && bash /app/scripts/verify_pinned_versions.sh && bash /app/scripts/verify_toolchain_versions.sh && python3 -m pip install -q pytest-sugar && /opt/venv/bin/python -B -m pytest -q --disable-warnings --tb=short --durations=10 --color=yes --cache-clear \$TEST_PATH"
 
 # Run the Docker container with bash entrypoint
 # Mount the current directory to /app to ensure tests run against local code
@@ -108,4 +111,4 @@ docker run --rm -it --entrypoint /bin/bash -v "$PROJECT_ROOT:/app" -v "$PROJECT_
 
 EXIT_CODE=$?
 echo "--- Pytest Finished (Exit Code: $EXIT_CODE) ---"
-exit $EXIT_CODE 
+exit $EXIT_CODE

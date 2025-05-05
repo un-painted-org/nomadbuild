@@ -24,7 +24,7 @@ from typing import Callable, Optional
 # Placeholder for logger - Will be configured properly in cli.py
 logger = logging.getLogger(__name__)
 
-# --- Constants moved from main script --- 
+# --- Constants moved from main script ---
 ENV_DIR_NAME = "build_env" # Should this be configurable?
 CONTAINER_APP_DIR = Path("/app")
 CONTAINER_OUTPUT_DIR = Path("/firmware")
@@ -32,7 +32,7 @@ LOG_FILE_NAME = "build.log"
 IDF_BUILD_LOG_FILENAME = "idf_build_output.log"
 BUILD_INFO_FILE = "build_info.json"
 
-# --- Spinner Class --- 
+# --- Spinner Class ---
 class Spinner:
     """Context manager for displaying a simple CLI spinner."""
     def __init__(self, message="Processing...", delay=0.1):
@@ -69,28 +69,49 @@ class Spinner:
 # --- Helper Functions moved from main script ---
 
 def get_env_dir() -> Path:
-    """Gets the path to the local build environment directory inside the container."""
-    env_dir = CONTAINER_APP_DIR / ENV_DIR_NAME
+    """Gets the path to the container-only build environment directory.
+
+    This directory is created inside the container and should never be mounted
+    to the host system. It's used for temporary files during the build process.
+    """
+    # Use /container_only instead of /app to ensure it's not mounted to the host
+    container_only_dir = Path("/container_only")
+
+    # Create the container_only directory if it doesn't exist
+    if not container_only_dir.exists():
+        container_only_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create the build environment directory inside the container_only directory
+    env_dir = container_only_dir / ENV_DIR_NAME
     return env_dir
 
 def setup_environment():
-    """Creates the local build environment directory and log directory."""
+    """Creates the container-only build environment directory and log directory.
+
+    This function ensures that all directories are created inside the container
+    and not on the host system. It uses the /container_only directory which is
+    not mounted from the host system.
+    """
+    # Use get_env_dir() which now returns a path in /container_only
     env_dir = get_env_dir()
     log_dir = env_dir / "logs"
     log_file_path = log_dir / LOG_FILE_NAME
 
     # Create directories
     if not env_dir.exists():
-        logger.info(f"Creating local build environment directory: {env_dir}")
+        logger.info(f"Creating container-only build environment directory: {env_dir}")
         env_dir.mkdir(parents=True, exist_ok=True)
     else:
-        logger.info(f"Using existing build environment directory: {env_dir}")
+        logger.info(f"Using existing container-only build environment directory: {env_dir}")
 
     log_dir.mkdir(exist_ok=True)
     (env_dir / "repos").mkdir(exist_ok=True)
 
     # Log file is cleared by FileHandler mode 'w' during logger setup in main()
     logger.debug(f"Log file path: {log_file_path}")
+
+    # Return the environment directory path for use by other functions
+    return env_dir
 
 def run_command(cmd_list, cwd=None, env=None, capture_output=True, check=False, stream_output: bool = False):
     """Runs a command, logs details, handles potential errors, and returns stdout if captured.
@@ -122,7 +143,7 @@ def run_command(cmd_list, cwd=None, env=None, capture_output=True, check=False, 
             cwd=cwd,
             env=process_env,
             text=True,
-            stdout=stdout_setting, 
+            stdout=stdout_setting,
             stderr=stderr_setting,
         )
 
@@ -141,9 +162,14 @@ def run_command(cmd_list, cwd=None, env=None, capture_output=True, check=False, 
                 logger.debug(f"Captured Stderr:\n{stderr_content[:500]}{'...' if len(stderr_content)>500 else ''}")
 
         logger.debug(f"Command finished successfully: {' '.join(cmd_list)}")
-        
-        # Return stdout if captured, otherwise None
-        return stdout_content if capture_output else None
+
+        # Return stdout if captured, the process object if streaming, otherwise None
+        if capture_output:
+            return stdout_content
+        elif stream_output:
+            return process
+        else:
+            return None
 
     except subprocess.CalledProcessError as e:
         # This block is only reached if check=True was passed to subprocess.run and the command failed
@@ -170,7 +196,7 @@ def run_command(cmd_list, cwd=None, env=None, capture_output=True, check=False, 
         if check: # Also raise if check=True was requested
             raise
         else:
-            return None 
+            return None
 
 def run_long_command_with_spinner(cmd_list, cwd=None, env=None, check=True):
     """Runs a potentially long command, capturing output, showing spinner (optional), and returning stdout."""
@@ -189,7 +215,7 @@ def copy_artifacts_to_output(firmware_build_path: Path, built_tag: str, expected
 
     logger.info(f"Cleaning previous build artifacts from {output_dir}...")
     cleaned_count = 0
-    keep_files = [IDF_BUILD_LOG_FILENAME, BUILD_INFO_FILE] 
+    keep_files = [IDF_BUILD_LOG_FILENAME, BUILD_INFO_FILE]
     for item in output_dir.iterdir():
         if item.name not in keep_files:
             if item.is_file():
@@ -206,7 +232,7 @@ def copy_artifacts_to_output(firmware_build_path: Path, built_tag: str, expected
         Path("bootloader") / "bootloader.bin": f"bootloader-{version_suffix}.bin",
         Path("partition_table") / "partition-table.bin": f"partition-table-{version_suffix}.bin",
         "www.bin": f"www-{version_suffix}.bin",
-        "flasher_args.json": f"flasher_args-{version_suffix}.json" 
+        "flasher_args.json": f"flasher_args-{version_suffix}.json"
     }
 
     logger.info(f"Copying artifacts from {firmware_build_path} to {output_dir}...")
@@ -217,7 +243,7 @@ def copy_artifacts_to_output(firmware_build_path: Path, built_tag: str, expected
         dest_full_path = output_dir / dest_filename
         if src_full_path.exists():
             try:
-                shutil.copy2(src_full_path, dest_full_path) 
+                shutil.copy2(src_full_path, dest_full_path)
                 file_size = dest_full_path.stat().st_size
                 file_hash = hashlib.sha256(dest_full_path.read_bytes()).hexdigest()
                 file_manifest[dest_filename] = {"size": file_size, "sha256": file_hash}
@@ -231,13 +257,13 @@ def copy_artifacts_to_output(firmware_build_path: Path, built_tag: str, expected
             else:
                  logger.warning(f"Source artifact not found, skipping copy: {src_full_path}")
 
-    # --- COMMENT OUT Build Info Saving --- 
+    # --- COMMENT OUT Build Info Saving ---
     # info_file_path = output_dir / BUILD_INFO_FILE
     # build_info = {
-    #     'built_tag': built_tag, 
-    #     'expected_version': expected_version, 
+    #     'built_tag': built_tag,
+    #     'expected_version': expected_version,
     #     'build_timestamp_utc': time.time(),
-    #     'artifacts': file_manifest, 
+    #     'artifacts': file_manifest,
     #     'platform': f\"{platform.system()} {platform.machine()}\"
     # }
     # try:
@@ -246,7 +272,7 @@ def copy_artifacts_to_output(firmware_build_path: Path, built_tag: str, expected
     #     logger.info(f\"Saved build info to {info_file_path} with expected_version: '{expected_version}\'\")
     # except Exception as e:
     #     logger.error(f\"Error saving build info to {info_file_path}: {e}\")
-    # --- END COMMENT OUT --- 
+    # --- END COMMENT OUT ---
 
     idf_log_src = get_env_dir() / "logs" / IDF_BUILD_LOG_FILENAME
     idf_log_dest = output_dir / IDF_BUILD_LOG_FILENAME
@@ -262,15 +288,15 @@ def copy_artifacts_to_output(firmware_build_path: Path, built_tag: str, expected
     logger.info(f"Artifact copying complete. ({len(copied_files_paths)} essential files copied to {output_dir})")
     return copied_files_paths
 
-# --- New Function for Build Info --- 
-def create_and_save_build_info(copied_artifact_paths: list[Path], 
-                               built_tag: str, 
-                               expected_version: str, 
+# --- New Function for Build Info ---
+def create_and_save_build_info(copied_artifact_paths: list[Path],
+                               built_tag: str,
+                               expected_version: str,
                                output_dir: Path) -> dict:
     """Calculates hashes, identifies key binaries, creates build_info dict, and saves it.
-    
+
     Args:
-        copied_artifact_paths: List of Path objects pointing to the copied artifacts 
+        copied_artifact_paths: List of Path objects pointing to the copied artifacts
                                in the output directory.
         built_tag: The specific git tag that was built.
         expected_version: The full version string (e.g., tag + suffix).
@@ -288,7 +314,7 @@ def create_and_save_build_info(copied_artifact_paths: list[Path],
     if not output_dir or not isinstance(output_dir, Path):
         logger.error("create_and_save_build_info: Invalid output_dir provided.")
         return {} # Return empty dict on error
-        
+
     if not copied_artifact_paths:
         logger.warning("create_and_save_build_info: No artifact paths provided. Build info will be incomplete.")
         # Continue to create a potentially empty/partial info file
@@ -352,7 +378,7 @@ def create_and_save_build_info(copied_artifact_paths: list[Path],
         with open(build_info_path, 'w', encoding='utf-8') as f:
             json.dump(build_info, f, indent=4, ensure_ascii=False)
         logger.info(f"Successfully saved build info to {build_info_path}.")
-            
+
     except TypeError as e:
         logger.exception(f"Error serializing build info to JSON for {build_info_path}: {e}. Data: {build_info}")
     except OSError as e:
@@ -360,17 +386,17 @@ def create_and_save_build_info(copied_artifact_paths: list[Path],
     except Exception as e:
         logger.exception(f"Unexpected error saving build info file {build_info_path}: {e}")
         # Even if saving fails, return the created dict
-        
+
     return build_info
 
 def calculate_sha256(file_path):
     """Calculate SHA256 checksum for a file."""
     # Ensure file_path is a Path object
-    file_path = Path(file_path) 
+    file_path = Path(file_path)
     if not file_path.is_file():
         logger.error(f"Cannot calculate SHA256: File not found at {file_path}")
         return None
-        
+
     sha256_hash = hashlib.sha256()
     try:
         with open(file_path, "rb") as f:
@@ -388,7 +414,7 @@ def calculate_sha256(file_path):
         return None
 
 # Need to import argparse for type hint in _handle_flashing if it remains here
-# import argparse 
+# import argparse
 # def _handle_flashing(...): # This function is defined in device.py
 
 # calculate_sha256 was defined as a method before, needs adjustment if needed as standalone
@@ -398,4 +424,4 @@ def calculate_sha256(file_path):
 #     with open(file_path, "rb") as f:
 #         for byte_block in iter(lambda: f.read(4096), b""):
 #             sha256_hash.update(byte_block)
-#     return sha256_hash.hexdigest() 
+#     return sha256_hash.hexdigest()

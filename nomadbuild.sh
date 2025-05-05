@@ -68,6 +68,8 @@ Actions:
   --flash-ip <IP>       Flash firmware to device at <IP>
   --restart-webui       Restart web UI (stops existing container)
   --build-image         Only build/rebuild the Docker image
+  --test [OPTIONS]      Run tests (passes options to test.sh)
+  --repro               Run reproducibility check
   --help                Show this help
 
 Options:
@@ -92,6 +94,9 @@ DO_BUILD_LATEST=false
 WEB_UI=false
 RESTART_WEB_UI=false
 NO_CACHE=false
+RUN_TESTS=false
+TEST_ARGS=()
+RUN_REPRO=false
 DOCKER_CMD_ARGS=() # Arguments for the python script inside docker
 HAS_ACTION_FLAG=false
 
@@ -106,31 +111,53 @@ done
 while [[ $# -gt 0 ]]; do
     case $1 in
         --build)
-            DO_BUILD_LATEST=true; HAS_ACTION_FLAG=true; shift ;; 
+            DO_BUILD_LATEST=true; HAS_ACTION_FLAG=true; shift ;;
         --tag)
             if [[ -z "$2" || "$2" == --* ]]; then echo "Error: --tag requires an argument." >&2; show_help; fi
-            DOCKER_CMD_ARGS+=("--tag" "$2"); HAS_ACTION_FLAG=true; shift 2 ;; 
+            DOCKER_CMD_ARGS+=("--tag" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
         --flash-ip)
              if [[ -z "$2" || "$2" == --* ]]; then echo "Error: --flash-ip requires an argument." >&2; show_help; fi
-            DOCKER_CMD_ARGS+=("--flash-ip" "$2"); HAS_ACTION_FLAG=true; shift 2 ;; 
+            DOCKER_CMD_ARGS+=("--flash-ip" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
         --build-image)
-            BUILD_IMAGE=true; shift ;; 
+            BUILD_IMAGE=true; shift ;;
         --no-cache)
             NO_CACHE=true; shift ;;
         --force-flash)
-            DOCKER_CMD_ARGS+=("--force-flash"); shift ;; 
+            DOCKER_CMD_ARGS+=("--force-flash"); shift ;;
         --skip-firmware)
-            DOCKER_CMD_ARGS+=("--skip-firmware"); shift ;; 
+            DOCKER_CMD_ARGS+=("--skip-firmware"); shift ;;
         --skip-www)
-            DOCKER_CMD_ARGS+=("--skip-www"); shift ;; 
+            DOCKER_CMD_ARGS+=("--skip-www"); shift ;;
         --verbose-build)
-            DOCKER_CMD_ARGS+=("--verbose-build"); HAS_ACTION_FLAG=true; shift ;; 
+            DOCKER_CMD_ARGS+=("--verbose-build"); HAS_ACTION_FLAG=true; shift ;;
         --web-ui|--webui)
             WEB_UI=true; HAS_ACTION_FLAG=true; shift ;;
         --restart-web-ui|--restart-webui)
             RESTART_WEB_UI=true; HAS_ACTION_FLAG=true; shift ;;
+        --test)
+            RUN_TESTS=true; HAS_ACTION_FLAG=true; shift ;;
+        --repro)
+            RUN_REPRO=true; HAS_ACTION_FLAG=true; shift ;;
+        # Special handling for test arguments
+        --all|--web-ui|--builder|--version|--path|--quiet)
+            if [ "$RUN_TESTS" = true ]; then
+                # Store the current argument
+                current_arg="$1"
+                TEST_ARGS+=("$current_arg")
+                shift
+
+                # If this is --path, also grab its argument
+                if [[ "$current_arg" == "--path" && $# -gt 0 && "$1" != "--"* ]]; then
+                    TEST_ARGS+=("$1")
+                    shift
+                fi
+            else
+                echo "Error: Test option $1 must come after --test" >&2
+                show_help
+            fi
+            ;;
         *)
-            echo "Error: Unknown option: $1" >&2; show_help ;; 
+            echo "Error: Unknown option: $1" >&2; show_help ;;
     esac
 done
 
@@ -189,20 +216,20 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
     else
         echo "WARNING: download_vendors.sh script not found at ./scripts/download_vendors.sh. CDN dependencies may not be properly embedded."
     fi
-    
+
     # Build command with optional --no-cache flag
     BUILD_CMD="docker build -q" # Restore -q for quiet build, outputting only image ID on success
-    
+
     if [ "$NO_CACHE" = true ]; then
         # echo "Using --no-cache option as requested."
         BUILD_CMD="$BUILD_CMD --no-cache"
     fi
-    
+
     BUILD_CMD="$BUILD_CMD -t \"$IMAGE_NAME\" \"$PROJECT_ROOT\""
 
     # Build the image using docker build command directly from project root
     # Display the command being run for transparency - REMOVED
-    # echo "Running build command: $BUILD_CMD" 
+    # echo "Running build command: $BUILD_CMD"
     if BUILD_OUTPUT=$(eval $BUILD_CMD); then
         # echo "Docker image '$IMAGE_NAME' build complete." # Removed verbosity
         echo "Image build complete. ID: $BUILD_OUTPUT" # Output only the image ID on success
@@ -221,16 +248,85 @@ if [ "$ONLY_BUILD_IMAGE" = true ]; then
     exit 0
 fi
 
+# --- Run Tests if requested ---
+if [ "$RUN_TESTS" = true ]; then
+    echo "Running tests with options: ${TEST_ARGS[@]}"
+    if [ -f "$SCRIPT_DIR/scripts/test.sh" ]; then
+        chmod +x "$SCRIPT_DIR/scripts/test.sh"
+        if "$SCRIPT_DIR/scripts/test.sh" "${TEST_ARGS[@]}"; then
+            echo "Tests completed successfully."
+            exit 0
+        else
+            echo "Error: Tests failed." >&2
+            exit 1
+        fi
+    else
+        echo "Error: test.sh script not found at $SCRIPT_DIR/scripts/test.sh" >&2
+        exit 1
+    fi
+fi
+
+# --- Run Reproducibility Check if requested ---
+if [ "$RUN_REPRO" = true ]; then
+    echo "Running reproducibility check..."
+
+    # Check if we have a tag specified
+    TAG_ARG=""
+    TAG_VALUE=""
+    i=0
+    while [ $i -lt ${#DOCKER_CMD_ARGS[@]} ]; do
+        if [[ "${DOCKER_CMD_ARGS[$i]}" == "--tag" && $(($i+1)) -lt ${#DOCKER_CMD_ARGS[@]} ]]; then
+            TAG_ARG="--tag ${DOCKER_CMD_ARGS[$((i+1))]}"
+            TAG_VALUE="${DOCKER_CMD_ARGS[$((i+1))]}"
+            break
+        fi
+        ((i++))
+    done
+
+    if [ -z "$TAG_ARG" ]; then
+        echo "Error: Reproducibility check requires a tag. Use --tag <VERSION>" >&2
+        exit 1
+    fi
+
+    # Pass the --repro option to the container
+    CMD_IN_CONTAINER=("python3" "-m" "src.builder.cli")
+    REPRO_ARGS=("--repro")
+
+    # Add the tag argument
+    if [ -n "$TAG_VALUE" ]; then
+        REPRO_ARGS+=("--tag" "$TAG_VALUE")
+    fi
+
+    # Mount project root's firmware directory
+    FIRMWARE_DIR="$PROJECT_ROOT/firmware"
+    if [ ! -d "$FIRMWARE_DIR" ]; then
+        echo "Creating firmware directory at $FIRMWARE_DIR"
+        mkdir -p "$FIRMWARE_DIR"
+    fi
+
+    docker run -it --rm -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" "${REPRO_ARGS[@]}"
+
+    EXIT_CODE=$?
+    if [ $EXIT_CODE -eq 0 ]; then
+        echo "Reproducibility check completed successfully."
+    else
+        echo "Error: Reproducibility check failed." >&2
+    fi
+    exit $EXIT_CODE
+fi
+
+
+
 # Function to stop any existing web UI containers
 stop_existing_containers() {
     local container_stopped=false
-    
+
     # Check for existing containers on port 9090
     local existing_container=$(docker ps --format "{{.ID}} {{.Names}}" | grep -E "(9090/tcp|0.0.0.0:9090)" || true)
-    
+
     # Also specifically check for a container named "nomadbuild-web"
     local existing_nomadbuild=$(docker ps --format "{{.ID}} {{.Names}}" | grep "nomadbuild-web" || true)
-    
+
     if [ ! -z "$existing_container" ]; then
         local container_id=$(echo $existing_container | cut -d' ' -f1)
         local container_name=$(echo $existing_container | cut -d' ' -f2)
@@ -238,7 +334,7 @@ stop_existing_containers() {
         docker stop $container_id >/dev/null
         container_stopped=true
     fi
-    
+
     if [ ! -z "$existing_nomadbuild" ] && [ "$existing_nomadbuild" != "$existing_container" ]; then
         local container_id=$(echo $existing_nomadbuild | cut -d' ' -f1)
         local container_name=$(echo $existing_nomadbuild | cut -d' ' -f2)
@@ -246,7 +342,7 @@ stop_existing_containers() {
         docker stop $container_id >/dev/null
         container_stopped=true
     fi
-    
+
     if [ "$container_stopped" = true ]; then
         echo "Existing containers have been stopped."
         # Small pause to ensure network ports are freed
@@ -263,20 +359,20 @@ if [ "$WEB_UI" = true ] || [ "$RESTART_WEB_UI" = true ]; then
         stop_existing_containers
     else
         echo "Starting NomadBuild Web UI..."
-        
+
         # Early exit if a NomadBuild Web UI container is already running
         RUNNING_CONTAINER_ID=$(docker ps -q --filter "name=nomadbuild-web")
         if [ -n "$RUNNING_CONTAINER_ID" ]; then
-            echo "\e[33mA NomadBuild Web UI container is already running (ID: $RUNNING_CONTAINER_ID).\e[0m"
+            printf "\e[33mA NomadBuild Web UI container is already running (ID: $RUNNING_CONTAINER_ID).\e[0m\n"
             echo "Access it at: http://localhost:9090"
             echo "If you wish to restart it use: $0 --restart-webui"
             echo "Or stop it manually: docker stop $RUNNING_CONTAINER_ID"
             exit 0
         fi
-        
+
         # Check if port 9090 is already in use by a Docker container
         EXISTING_CONTAINER=$(docker ps --format "{{.ID}} {{.Names}}" | grep -E "(9090/tcp|0.0.0.0:9090)" || true)
-        
+
         if [ ! -z "$EXISTING_CONTAINER" ]; then
             CONTAINER_ID=$(echo $EXISTING_CONTAINER | cut -d' ' -f1)
             CONTAINER_NAME=$(echo $EXISTING_CONTAINER | cut -d' ' -f2)
@@ -301,11 +397,11 @@ if [ "$WEB_UI" = true ] || [ "$RESTART_WEB_UI" = true ]; then
         echo "Creating firmware directory at $FIRMWARE_DIR"
         mkdir -p "$FIRMWARE_DIR"
     fi
-    
+
     # Run the web UI
     CMD_IN_CONTAINER=("python3" "-m" "src.web_ui")
     # echo "Running web UI container with command: ${CMD_IN_CONTAINER[@]}"
-    
+
     # Find the browser based on OS
     BROWSER_CMD=""
     if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -330,7 +426,7 @@ if [ "$WEB_UI" = true ] || [ "$RESTART_WEB_UI" = true ]; then
         # Windows
         BROWSER_CMD="start \"NomadBuild Web UI\" http://localhost:9090"
     fi
-    
+
     # Start the container in detached mode
     # echo "Starting Docker container for NomadBuild Web UI..."
     echo ""
@@ -338,34 +434,34 @@ if [ "$WEB_UI" = true ] || [ "$RESTART_WEB_UI" = true ]; then
     echo "  NomadBuild Web UI will be available at: http://localhost:9090"
     echo "----------------------------------------------------------------------------------------"
     echo ""
-    
+
     # Run Docker with a static container name for easy identification
     CONTAINER_ID=$(docker run -d --name nomadbuild-web --rm \
         -p 9090:9090 \
         -v "$FIRMWARE_DIR:/firmware" \
         "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" 2>&1)
-    
+
     # Check if container started successfully
     if [ $? -ne 0 ]; then
         echo "Error starting Docker container: $CONTAINER_ID"
         exit 1
     fi
-    
+
     if [ -z "$CONTAINER_ID" ]; then
         echo "Failed to start Docker container: Empty container ID returned."
         exit 1
     fi
-    
+
     echo "Container started with ID: $CONTAINER_ID (name: nomadbuild-web)"
-    
+
     # Wait for the web server to start before opening browser
     echo "Waiting for web server to become available..."
-    
+
     MAX_WAIT=60  # Wait up to 60 seconds
     WAIT_INTERVAL=3  # Check every 3 seconds
     ELAPSED=0
     SERVER_READY=false
-    
+
     while [ $ELAPSED -lt $MAX_WAIT ]; do
         # Check if container is still running
         if ! docker ps -q --filter "id=$CONTAINER_ID" --filter "status=running" >/dev/null 2>&1; then
@@ -374,17 +470,17 @@ if [ "$WEB_UI" = true ] || [ "$RESTART_WEB_UI" = true ]; then
             docker logs "$CONTAINER_ID" 2>&1 || echo "Could not retrieve logs." >&2
             exit 1
         fi
-        
+
         # Try to connect to web server to verify it's up
         if curl -s --fail http://localhost:9090 >/dev/null 2>&1; then
             SERVER_READY=true
             break
         fi
-        
+
         sleep $WAIT_INTERVAL
         ELAPSED=$((ELAPSED + WAIT_INTERVAL))
     done
-    
+
     # Final status message
     if [ "$SERVER_READY" = true ]; then
          echo "Web server is ready!"
@@ -395,16 +491,16 @@ if [ "$WEB_UI" = true ] || [ "$RESTART_WEB_UI" = true ]; then
         # echo "Last container logs:" >&2
         # docker logs "$CONTAINER_ID" | tail -n 10 >&2
     fi
-    
+
     # Open browser if command exists
     if [ -n "$BROWSER_CMD" ]; then
         echo "Opening browser to http://localhost:9090 in a new window"
         eval $BROWSER_CMD
     fi
-    
+
     echo "Web UI is running in the background. Access it at http://localhost:9090"
     echo "To stop the container, run: docker stop $CONTAINER_ID (or docker stop nomadbuild-web)"
-    
+
     exit 0
 fi
 
@@ -423,4 +519,4 @@ docker run -it --rm -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME" "${CMD_IN_CONTAIN
 
 EXIT_CODE=$?
 echo "NomadBuild finished (Exit Code: $EXIT_CODE)."
-exit $EXIT_CODE 
+exit $EXIT_CODE

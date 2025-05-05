@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: NomadBuild Documentation
+    url: https://github.com/marsmensch/nomadbuild/tree/main/docs
+    about: Please check the documentation before creating an issue.
+  - name: Bitaxe Community
+    url: https://osmu.bitaxe.org
+    about: For general questions and discussions about Bitaxe hardware, please join the OSMU Discord.

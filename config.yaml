@@ -1,0 +1,59 @@
+# NomadBuild Configuration File
+# This file controls all version pins and configuration for the build environment
+
+# Base image configuration
+base_image:
+  name: espressif/idf
+  digest: sha256:6b4adab7b282e9261a154d7130fb4945a3c28bd35c2e914357c2f522643cb92a
+
+# OS configuration
+os_config:
+  timezone: UTC
+  locale: C.UTF-8
+  python_hash_seed: 0
+
+# Toolchain versions
+toolchain:
+  gcc: 13.3.0
+  cmake: 3.30.2
+  objcopy: 2.42
+  python3: 3.12.3
+
+# APT packages with pinned versions
+apt_packages:
+  ca-certificates: 20240203
+  curl: 8.5.0-2ubuntu10.6
+  gnupg: 2.4.4-2ubuntu17
+  pandoc: 3.1.3+ds-2
+  perl: 5.38.2-3.2build2.1
+  python3-pip: 24.0+dfsg-1ubuntu1
+  python3-venv: 3.12.3-0ubuntu2
+  nodejs: 22.15.0-1nodesource1
+
+# Python packages with pinned versions
+python_packages:
+  # Web UI and API dependencies
+  flask: 3.1.0
+  flask-socketio: 5.5.1
+  werkzeug: 3.1.3
+  jinja2: 3.1.6
+  itsdangerous: 2.2.0
+  blinker: 1.9.0
+  python-socketio: 5.13.0
+  python-engineio: 4.12.0
+  bidict: 0.23.1
+  simple-websocket: 1.1.0
+  h11: 0.14.0
+  wsproto: 1.2.0
+
+  # ESP-IDF related dependencies
+  requests: 2.32.3
+  pyyaml: 6.0.1
+  esp-idf-monitor: 1.6.2
+  idf-component-manager: 2.1.0
+  kconfiglib: 14.1.0
+
+  # Testing dependencies
+  pytest: 8.3.5
+  pytest-mock: 3.14.0
+  pytest-sugar: 1.0.0

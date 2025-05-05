@@ -1,0 +1,51 @@
+# Exclude version control files
+.git
+.gitignore
+.github
+
+# Exclude build artifacts
+build/
+*.md5
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Exclude documentation and test files not needed in the image
+README.md
+LICENSE
+CONTRIBUTING.md
+*.md
+!docs/*.md
+
+# Exclude development files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Exclude backlog folder
+backlog/
+
+# Exclude archive folder
+archive/
+
+# Exclude Dockerfile and related files (they're generated)
+Dockerfile*
+.config.yaml.md5

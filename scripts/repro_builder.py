@@ -3,6 +3,7 @@
 # Copyright (c) 2025 marsmensch
 # SPDX-License-Identifier: MIT
 #
+# Reproducible build checker for ESP-Miner
 import os
 import sys
 import argparse
@@ -11,13 +12,21 @@ import logging
 import logging.handlers
 import time
 import hashlib
+import shutil
 from pathlib import Path
+from typing import Optional, Dict, List, Tuple, Any
 
 # --- Configuration ---
 ENV_DIR_NAME = "build_env"
 CONTAINER_APP_DIR = Path("/app")
+CONTAINER_ONLY_DIR = Path("/container_only")
 ESP_MINER_REPO = "https://github.com/bitaxeorg/ESP-Miner.git"
 LOG_FILE_NAME = "repro_build.log"
+
+# Define the path to the correct Python interpreter for ESP-IDF builds
+ESP_IDF_PYTHON = "/opt/esp/python_env/idf5.4_py3.12_env/bin/python"
+# Define the full path to the idf.py script
+IDF_PY_SCRIPT = "/opt/esp/idf/tools/idf.py"
 
 # --- Global Logger ---
 logger = logging.getLogger("ReproBuilder")
@@ -25,7 +34,15 @@ logger = logging.getLogger("ReproBuilder")
 # --- Helper Functions (Simplified/Adapted) ---
 
 def get_env_dir() -> Path:
-    env_dir = CONTAINER_APP_DIR / ENV_DIR_NAME
+    # Use /container_only instead of /app to ensure it's not mounted to the host
+    container_only_dir = CONTAINER_ONLY_DIR
+
+    # Create the container_only directory if it doesn't exist
+    if not container_only_dir.exists():
+        container_only_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create the build environment directory inside the container_only directory
+    env_dir = container_only_dir / ENV_DIR_NAME
     return env_dir
 
 def setup_environment():
@@ -64,67 +81,296 @@ def run_command(cmd_list, cwd=None, env=None, capture_output=True, check=True, d
         sys.exit(1)
 
 def fetch_repo(repo_url: str, repo_name: str) -> Path:
+    """Fetches or updates a Git repository."""
     env_dir = get_env_dir()
     repos_dir = env_dir / "repos"
     repo_path = repos_dir / repo_name
+
     logger.info(f"Checking repository: {repo_name} at {repo_path}")
-    if not (repo_path.exists() and (repo_path / ".git").is_dir()):
-        logger.info(f"Cloning {repo_name}...")
-        run_command(["git", "clone", repo_url, str(repo_path)], capture_output=False, description="clone repo")
-    else:
-        logger.info(f"Updating existing clone...") 
-        run_command(["git", "fetch", "--tags", "--force", "--prune"], cwd=repo_path, capture_output=False, description="fetch tags")
-        # Careful with reset if local changes are ever intended
-        # run_command(["git", "reset", "--hard", "origin/master"], cwd=repo_path, capture_output=False, description="reset master") 
-        # run_command(["git", "pull"], cwd=repo_path, capture_output=False, description="pull")
-        run_command(["git", "clean", "-fdx"], cwd=repo_path, capture_output=False, description="clean repo")
-    return repo_path
+
+    try:
+        if not (repo_path.exists() and (repo_path / ".git").is_dir()):
+            # Clone the repository
+            logger.info(f"Cloning {repo_name}...")
+            clone_cmd = ["git", "clone", repo_url, str(repo_path)]
+            logger.debug(f"Executing: {' '.join(clone_cmd)}")
+
+            process = subprocess.run(
+                clone_cmd,
+                env=os.environ.copy(),
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+        else:
+            # Update the existing repository
+            logger.info(f"Updating existing clone...")
+
+            # Fetch tags
+            fetch_cmd = ["git", "fetch", "--tags", "--force", "--prune"]
+            logger.debug(f"Executing: {' '.join(fetch_cmd)} in {repo_path}")
+
+            process = subprocess.run(
+                fetch_cmd,
+                cwd=repo_path,
+                env=os.environ.copy(),
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            # Clean the repository
+            clean_cmd = ["git", "clean", "-fdx"]
+            logger.debug(f"Executing: {' '.join(clean_cmd)} in {repo_path}")
+
+            process = subprocess.run(
+                clean_cmd,
+                cwd=repo_path,
+                env=os.environ.copy(),
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+        return repo_path
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git command failed with exit code {e.returncode}")
+        if e.stderr:
+            logger.error(f"Git stderr: {e.stderr[:500]}...")
+        raise RuntimeError(f"Failed to fetch repository {repo_name}")
+    except Exception as e:
+        logger.error(f"Unexpected error during repository fetch: {e}")
+        raise RuntimeError(f"Failed to fetch repository {repo_name}")
 
 def checkout_tag(repo_path: Path, tag: str):
+    """Checks out a specific tag in the repository and updates submodules."""
     logger.info(f"Checking out tag {tag}...")
-    run_command(["git", "checkout", f"tags/{tag}"], cwd=repo_path, capture_output=False, description="checkout tag")
-    logger.info("Updating submodules...")
-    run_command(["git", "submodule", "update", "--init", "--recursive"], cwd=repo_path, capture_output=False, description="update submodules")
-    logger.info(f"Checked out {tag} successfully.")
+
+    try:
+        # Checkout the tag
+        checkout_cmd = ["git", "checkout", f"tags/{tag}"]
+        logger.debug(f"Executing: {' '.join(checkout_cmd)} in {repo_path}")
+
+        process = subprocess.run(
+            checkout_cmd,
+            cwd=repo_path,
+            env=os.environ.copy(),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        # Update submodules
+        logger.info("Updating submodules...")
+        submodule_cmd = ["git", "submodule", "update", "--init", "--recursive"]
+        logger.debug(f"Executing: {' '.join(submodule_cmd)} in {repo_path}")
+
+        process = subprocess.run(
+            submodule_cmd,
+            cwd=repo_path,
+            env=os.environ.copy(),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        logger.info(f"Checked out {tag} successfully.")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git command failed with exit code {e.returncode}")
+        if e.stderr:
+            logger.error(f"Git stderr: {e.stderr[:500]}...")
+        raise RuntimeError(f"Failed to checkout tag {tag}")
+    except Exception as e:
+        logger.error(f"Unexpected error during checkout: {e}")
+        raise RuntimeError(f"Failed to checkout tag {tag}")
 
 def _get_commit_timestamp(repo_path: Path, tag: str) -> str | None:
+    """Gets the commit timestamp for a specific tag."""
     logger.debug(f"Getting commit timestamp for tag {tag}...")
+
     try:
-        ts_str = run_command(["git", "log", "-1", "--pretty=%ct", tag], cwd=repo_path)
-        if ts_str and ts_str.isdigit(): return ts_str
+        # Get the commit timestamp
+        command = ["git", "log", "-1", "--pretty=%ct", tag]
+        logger.debug(f"Executing: {' '.join(command)} in {repo_path}")
+
+        process = subprocess.run(
+            command,
+            cwd=repo_path,
+            env=os.environ.copy(),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        ts_str = process.stdout.strip()
+
+        if ts_str and ts_str.isdigit():
+            return ts_str
+
         logger.error(f"Could not parse commit timestamp for tag {tag}. Output: '{ts_str}'")
         return None
-    except Exception as e: logger.error(f"Could not get commit timestamp for tag {tag}: {e}"); return None
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git command failed with exit code {e.returncode}")
+        if e.stderr:
+            logger.error(f"Git stderr: {e.stderr[:500]}...")
+        return None
+    except Exception as e:
+        logger.error(f"Could not get commit timestamp for tag {tag}: {e}")
+        return None
 
 def _run_idf_clean(miner_repo_path: Path):
+    """Runs idf.py fullclean using the correct Python environment and direct subprocess call."""
     logger.info("Running idf.py fullclean...")
-    run_command(["idf.py", "fullclean"], cwd=miner_repo_path, capture_output=False, env={"IDF_TARGET": "esp32s3"})
-    logger.info("Clean completed.")
+
+    # Start from parent env and remove known non-deterministic variables
+    idf_env = os.environ.copy()
+    non_deterministic = []
+    for k in list(idf_env.keys()):
+        if (k in ['HOME','USER','PWD','OLDPWD']
+            or k.startswith('TMP')
+            or k.startswith('TEMP')
+            or k.startswith('CI')
+            or k.startswith('GITHUB_')
+            or k.startswith('DOCKER_')
+            or k.startswith('SSH_')
+            or k.startswith('PYENV_')
+            or k in ['PYTHONPATH','PYTHONHOME']):
+            non_deterministic.append(k)
+    for k in non_deterministic:
+        idf_env.pop(k, None)
+
+    # Ensure build-relevant variables are set
+    idf_env['IDF_TARGET'] = 'esp32s3'
+
+    # Execute idf.py script directly with the ESP-IDF Python interpreter
+    command = [ESP_IDF_PYTHON, IDF_PY_SCRIPT, "fullclean"]
+    logger.info(f"Executing: {' '.join(command)} in {miner_repo_path}")
+
+    try:
+        # Use subprocess.run directly for better control
+        process = subprocess.run(
+            command,
+            cwd=miner_repo_path,
+            env=idf_env,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        logger.info("Clean completed successfully.")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Clean failed with exit code {e.returncode}")
+        if e.stderr:
+            logger.error(f"Clean stderr: {e.stderr[:500]}...")
+        raise RuntimeError(f"idf.py fullclean failed with exit code {e.returncode}")
+    except Exception as e:
+        logger.error(f"Clean failed with exception: {e}")
+        raise RuntimeError(f"Unexpected error during clean: {e}")
+
+
 
 def _run_idf_build(miner_repo_path: Path, commit_timestamp: str) -> bool:
+    """Runs the IDF build command using the correct Python interpreter and IDF script."""
     logger.info("Running idf.py build...")
+
+    # Start from parent env and remove known non-deterministic variables
     build_env = os.environ.copy()
+    non_deterministic = []
+    for k in list(build_env.keys()):
+        if (k in ['HOME','USER','PWD','OLDPWD']
+            or k.startswith('TMP')
+            or k.startswith('TEMP')
+            or k.startswith('CI')
+            or k.startswith('GITHUB_')
+            or k.startswith('DOCKER_')
+            or k.startswith('SSH_')
+            or k.startswith('PYENV_')
+            or k in ['PYTHONPATH','PYTHONHOME']):
+            non_deterministic.append(k)
+    for k in non_deterministic:
+        build_env.pop(k, None)
+
+    # Ensure build-relevant variables are set
     build_env["IDF_TARGET"] = "esp32s3"
     build_env["SOURCE_DATE_EPOCH"] = commit_timestamp
+
+    # Execute idf.py build using the ESP-IDF Python interpreter for deterministic environment
+    command = [ESP_IDF_PYTHON, IDF_PY_SCRIPT, "build"]
+    logger.info(f"Executing: {' '.join(command)} in {miner_repo_path}")
+
+    # Log relevant env vars being used by the subprocess
+    logger.info(f"  Env (Selected): {{'IDF_TARGET': '{build_env.get('IDF_TARGET')}', 'SOURCE_DATE_EPOCH': '{build_env.get('SOURCE_DATE_EPOCH', 'N/A')}'}}")
+
     try:
-        run_command(["idf.py", "build"], cwd=miner_repo_path, env=build_env, capture_output=False, check=True)
+        # Use subprocess.run directly for better control
+        process = subprocess.run(
+            command,
+            cwd=miner_repo_path,
+            env=build_env,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
         logger.info("Build completed successfully.")
         return True
-    except Exception: logger.error("Build failed."); return False
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Build failed with exit code {e.returncode}")
+        if e.stdout:
+            logger.debug(f"Build stdout: {e.stdout[:500]}...")
+        if e.stderr:
+            logger.error(f"Build stderr: {e.stderr[:500]}...")
+        return False
+    except Exception as e:
+        logger.error(f"Build failed with exception: {e}")
+        return False
 
 # Runs the merge_bin.sh script to create a generic merged binary.
 def _run_merge_script(miner_repo_path: Path, output_filename: str) -> Path | None:
+    """Runs the merge_bin.sh script to create a generic merged binary."""
     logger.info(f"Generating Merged Binary: {output_filename}...")
     merge_script = miner_repo_path / "merge_bin.sh"
-    output_path = miner_repo_path / "build" / output_filename 
-    if not merge_script.exists(): logger.error(f"{merge_script.name} not found."); return None
+    output_path = miner_repo_path / "build" / output_filename
+
+    if not merge_script.exists():
+        logger.error(f"{merge_script.name} not found.")
+        return None
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    merge_cmd = [str(merge_script), str(output_path)]
+    command = ["/bin/bash", str(merge_script), str(output_path)]
+
     try:
-        run_command(["/bin/bash"] + merge_cmd, cwd=miner_repo_path, capture_output=False, check=True)
-        if output_path.exists(): logger.info("Generated merged binary."); return output_path
-        logger.error("Merge script ran but output file not found."); return None
-    except Exception as e: logger.error(f"Error running merge script: {e}"); return None
+        # Use subprocess.run directly for better control
+        process = subprocess.run(
+            command,
+            cwd=miner_repo_path,
+            env=os.environ.copy(),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        if output_path.exists():
+            logger.info("Generated merged binary.")
+            return output_path
+
+        logger.error("Merge script ran but output file not found.")
+        return None
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Merge script failed with exit code {e.returncode}")
+        if e.stderr:
+            logger.error(f"Merge script stderr: {e.stderr[:500]}...")
+        return None
+    except Exception as e:
+        logger.error(f"Error running merge script: {e}")
+        return None
 
 # Calculates SHA256 hash for a single file path.
 def _calculate_hash(image_path: Path | None) -> str | None:
@@ -153,12 +399,13 @@ def _setup_logging(args: argparse.Namespace):
     logger.info(f"Logging initialized. Log file: {log_file_path}")
 
 # --- Main Logic ---
-def main():
-    parser = argparse.ArgumentParser(description="Bitaxe Reproducible Build Checker (Internal)")
-    parser.add_argument("--tag", required=True, help="ESP-Miner git tag to build and check.")
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Log level for file.")
-    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress INFO on console.")
-    args = parser.parse_args()
+def main(args=None):
+    if args is None:
+        parser = argparse.ArgumentParser(description="Bitaxe Reproducible Build Checker (Internal)")
+        parser.add_argument("--tag", required=True, help="ESP-Miner git tag to build and check.")
+        parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Log level for file.")
+        parser.add_argument("-q", "--quiet", action="store_true", help="Suppress INFO on console.")
+        args = parser.parse_args()
 
     _setup_logging(args)
     setup_environment()
@@ -171,18 +418,53 @@ def main():
 
     # --- Repro Hardening: verify clean tree & canonicalize mtimes ---
     # 1) Abort if the upstream repo is dirty (should never happen in CI)
-    dirty_status = run_command(["git", "status", "--porcelain"], cwd=miner_repo_path)
-    if dirty_status:
-        logger.error("Upstream repository has uncommitted changes; aborting for reproducibility.")
-        sys.exit(1)
+    try:
+        logger.info("Checking if repository is clean...")
+        status_cmd = ["git", "status", "--porcelain"]
+        logger.debug(f"Executing: {' '.join(status_cmd)} in {miner_repo_path}")
 
-    # 2) Ensure all file mtimes equal the commit timestamp (SOURCE_DATE_EPOCH)
-    commit_ts_cmd = ["find", ".", "-exec", "touch", "-hcd", "@$(git log -1 --pretty=%ct)", "{}", "+"]
-    run_command(["bash", "-c", " ".join(commit_ts_cmd)], cwd=miner_repo_path, capture_output=False, description="normalize mtimes")
+        process = subprocess.run(
+            status_cmd,
+            cwd=miner_repo_path,
+            env=os.environ.copy(),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        dirty_status = process.stdout.strip()
+        if dirty_status:
+            logger.error("Upstream repository has uncommitted changes; aborting for reproducibility.")
+            logger.error(f"Git status output: {dirty_status}")
+            sys.exit(1)
+
+        # 2) Ensure all file mtimes equal the commit timestamp (SOURCE_DATE_EPOCH)
+        logger.info("Normalizing file timestamps...")
+        commit_ts_cmd = ["bash", "-c", "find . -exec touch -hcd @$(git log -1 --pretty=%ct) {} +"]
+        logger.debug(f"Executing: {commit_ts_cmd} in {miner_repo_path}")
+
+        process = subprocess.run(
+            commit_ts_cmd,
+            cwd=miner_repo_path,
+            env=os.environ.copy(),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed with exit code {e.returncode}")
+        if e.stderr:
+            logger.error(f"Command stderr: {e.stderr[:500]}...")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error during repository check: {e}")
+        sys.exit(1)
 
     commit_timestamp = _get_commit_timestamp(miner_repo_path, args.tag)
     if not commit_timestamp: sys.exit("Failed to get commit timestamp.")
-            
+
     hash_run1 = None; hash_run2 = None
 
     # --- Run 1 ---
@@ -191,6 +473,15 @@ def main():
     if not _run_idf_build(miner_repo_path, commit_timestamp): sys.exit("Build Run 1 Failed.")
     merged_path_1 = _run_merge_script(miner_repo_path, f"merged-{args.tag}-run1.bin")
     hash_run1 = _calculate_hash(merged_path_1)
+
+    # Copy the binary file to the firmware directory for easier access
+    firmware_dir = Path("/app/firmware")
+    firmware_dir.mkdir(parents=True, exist_ok=True)
+    if merged_path_1 and merged_path_1.exists():
+        firmware_path_1 = firmware_dir / f"merged-{args.tag}-run1.bin"
+        logger.info(f"Copying binary file to {firmware_path_1}")
+        shutil.copy2(merged_path_1, firmware_path_1)
+
     logger.info("--- Finished Build Run 1 --- ")
 
     # --- Run 2 ---
@@ -200,30 +491,77 @@ def main():
     # Re-checkout is safest to undo any potential build side effects not caught by clean
     # Add extra git clean for good measure before checkout
     logger.info("Cleaning source tree again before Run 2 checkout...")
-    run_command(["git", "clean", "-fdx"], cwd=miner_repo_path, capture_output=False, description="pre-run2 clean")
-    checkout_tag(miner_repo_path, args.tag) 
+    try:
+        clean_cmd = ["git", "clean", "-fdx"]
+        logger.debug(f"Executing: {' '.join(clean_cmd)} in {miner_repo_path}")
+
+        process = subprocess.run(
+            clean_cmd,
+            cwd=miner_repo_path,
+            env=os.environ.copy(),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git clean failed with exit code {e.returncode}")
+        if e.stderr:
+            logger.error(f"Git clean stderr: {e.stderr[:500]}...")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error during git clean: {e}")
+        sys.exit(1)
+
+    checkout_tag(miner_repo_path, args.tag)
     # Also re-normalize timestamps after checkout for Run 2
     logger.info("Normalizing file timestamps again before Run 2 build...")
-    commit_ts_cmd = ["find", ".", "-exec", "touch", "-hcd", "@$(git log -1 --pretty=%ct)", "{}", "+"]
-    run_command(["bash", "-c", " ".join(commit_ts_cmd)], cwd=miner_repo_path, capture_output=False, description="normalize mtimes run2")
-    
+    try:
+        commit_ts_cmd = ["bash", "-c", "find . -exec touch -hcd @$(git log -1 --pretty=%ct) {} +"]
+        logger.debug(f"Executing: {commit_ts_cmd} in {miner_repo_path}")
+
+        process = subprocess.run(
+            commit_ts_cmd,
+            cwd=miner_repo_path,
+            env=os.environ.copy(),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to normalize timestamps with exit code {e.returncode}")
+        if e.stderr:
+            logger.error(f"Command stderr: {e.stderr[:500]}...")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error during timestamp normalization: {e}")
+        sys.exit(1)
+
     # Run the build again with the same timestamp
     if not _run_idf_build(miner_repo_path, commit_timestamp): sys.exit("Build Run 2 Failed.")
     merged_path_2 = _run_merge_script(miner_repo_path, f"merged-{args.tag}-run2.bin")
     hash_run2 = _calculate_hash(merged_path_2)
+
+    # Copy the binary file to the firmware directory for easier access
+    if merged_path_2 and merged_path_2.exists():
+        firmware_path_2 = firmware_dir / f"merged-{args.tag}-run2.bin"
+        logger.info(f"Copying binary file to {firmware_path_2}")
+        shutil.copy2(merged_path_2, firmware_path_2)
+
     logger.info("--- Finished Build Run 2 --- ")
 
-    # --- Comparison --- 
+    # --- Comparison ---
     logger.info("--- Comparing Build Outputs (Merged Binary Hash) --- ")
     reproducible = False
     if hash_run1 is None or hash_run2 is None: logger.error("Cannot compare: Hash missing from one or both runs.")
     elif hash_run1 == hash_run2: logger.info(f"MATCH: Merged Binary Hash: {hash_run1}"); reproducible = True
     else: logger.warning(f"MISMATCH: Merged Binary - Run 1: {hash_run1} | Run 2: {hash_run2}")
-            
+
     # --- Final Result ---
     logger.info("--- Reproducibility Check Result ---")
     if reproducible: logger.info("SUCCESS: Build is reproducible!"); print("RESULT: Reproducible"); sys.exit(0)
     else: logger.error(f"FAILURE: Build is NOT reproducible."); print("RESULT: Not Reproducible"); sys.exit(1)
 
 if __name__ == "__main__":
-    main() 
+    main()

@@ -38,7 +38,7 @@ From the project root, run the provided test script:
 
 # Run quietly (minimal output)
 ./scripts/test.sh --quiet
-``` 
+```
 
 The script will:
 1. Verify or build the `nomadbuild` image.
@@ -68,11 +68,13 @@ NomadBuild ships with a comprehensive pytest suite covering build orchestration,
 ./scripts/test.sh --quiet
 ```
 
-## Running natively
+## Container Environment Requirement
 
-1. Install Poetry or create a virtual-env.
-2. `pip install -r requirements-dev.txt` (pytest, pytest-mock, etc.)
-3. `python -m pytest -q`
+**Important**: All tests are designed to run exclusively inside the Docker container environment. This ensures reproducibility and consistent test results across different development environments.
+
+The test suite includes verification that tests are running inside a container environment and will fail with a clear error message if run outside the container.
+
+Always use the provided `./scripts/test.sh` script to run tests, which ensures they run inside the Docker container.
 
 ## What Gets Tested?
 
