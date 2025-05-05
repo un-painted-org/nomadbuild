@@ -251,8 +251,8 @@ def _display_build_summary(selected_tag, expected_version, args):
     """Displays a user-friendly summary of the build results."""
     from .color_formatter import Colors
 
-    # Only show summary if we did a build or flash
-    if not (args.tag or args.force_rebuild or args.flash_ip):
+    # Only show summary if we did a build (not for flash)
+    if not (args.tag or args.force_rebuild) or args.flash_ip:
         return
 
     # Get the output directory
@@ -269,9 +269,9 @@ def _display_build_summary(selected_tag, expected_version, args):
             logger.debug(f"Could not read build info: {e}")
 
     # Print a visually distinct summary section
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 60)
     print(f"{Colors.BOLD}{Colors.BRIGHT_GREEN}BUILD SUMMARY{Colors.RESET}")
-    print("=" * 80)
+    print("=" * 60)
 
     # Build information
     if selected_tag:
@@ -289,20 +289,7 @@ def _display_build_summary(selected_tag, expected_version, args):
                 size_str = f"{size / 1024:.1f} KB" if size < 1024 * 1024 else f"{size / (1024 * 1024):.1f} MB"
                 print(f"  {Colors.BRIGHT_GREEN}✓{Colors.RESET} {file} ({size_str})")
 
-    # Next steps
-    print(f"\n{Colors.BOLD}Next Steps:{Colors.RESET}")
-    if args.flash_ip:
-        print(f"  {Colors.BRIGHT_GREEN}✓{Colors.RESET} Firmware has been flashed to device(s)")
-    else:
-        print(f"  {Colors.BRIGHT_YELLOW}•{Colors.RESET} To flash this firmware: {Colors.BRIGHT_WHITE}./nomadbuild.sh --flash-ip <IP_ADDRESS>{Colors.RESET}")
-
-    print(f"  {Colors.BRIGHT_YELLOW}•{Colors.RESET} To use the Web UI: {Colors.BRIGHT_WHITE}./nomadbuild.sh --webui{Colors.RESET}")
-
-    # Location of files
-    print(f"\n{Colors.BOLD}Firmware Location:{Colors.RESET}")
-    print(f"  {Colors.BRIGHT_WHITE}{output_dir}{Colors.RESET}")
-
-    print("=" * 80 + "\n")
+    print("=" * 60 + "\n")
 
 def main():
     """Main entry point for the CLI application."""
@@ -330,8 +317,6 @@ def main():
 
     # Display a user-friendly build summary
     _display_build_summary(selected_tag, expected_version, args)
-
-    logger.info("--- Builder Finished --- ")
 
 if __name__ == "__main__":
     # Basic config might run before _setup_logging, but _setup_logging will remove its handlers

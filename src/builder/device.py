@@ -128,7 +128,7 @@ def verify_bitaxe_target(target_ip: str) -> tuple[dict | None, str | None]:
         if not all(k in device_info for k in ["hostname", "version", "ASICModel"]):
             logger.error(f"Device at {target_ip} does not appear to be a compatible Bitaxe...")
             return None, None
-        
+
         asic_model = device_info.get("ASICModel", "").upper()
         if "LV" in asic_model:
              logger.error(f"Device ASIC model '{asic_model}' at {target_ip} indicates an unsupported LV type...")
@@ -145,7 +145,7 @@ def verify_bitaxe_target(target_ip: str) -> tuple[dict | None, str | None]:
             return None, None
 
         logger.info(f"Verification successful: Found {identified_model} '{device_info.get('hostname')}' (ASIC: {asic_model}, Version: {device_info.get('version')}) at {target_ip}.")
-        return device_info, identified_model 
+        return device_info, identified_model
 
     # ... (Exception handling remains same) ...
     except requests.exceptions.Timeout:
@@ -184,7 +184,7 @@ def upload_to_bitaxe(target_ip: str, endpoint: str, file_path: Path, file_descri
         success = False
         with Spinner(spinner_msg): # Use Spinner from utils
             response = requests.post(url, data=file_content_bytes, headers=headers, timeout=UPLOAD_TIMEOUT)
-        
+
         logger.debug(f"Upload response status: {response.status_code}")
         logger.debug(f"Upload response body: {response.text}")
 
@@ -225,7 +225,7 @@ def verify_flash_success(target_ip: str, expected_version: str | None):
     if not expected_base_version:
          logger.warning(f"Could not extract base version from expected_version '{expected_version}'... Using full string as base.")
          expected_base_version = expected_version
-    
+
     # The full expected version is just the expected_version passed in
     expected_full_version = expected_version
 
@@ -242,19 +242,19 @@ def verify_flash_success(target_ip: str, expected_version: str | None):
         logger.debug(f"Attempting to contact {target_ip} (elapsed: {elapsed_wait}s)...")
         url = f"http://{target_ip}/api/system/info"
         try:
-            response = requests.get(url, timeout=API_TIMEOUT) 
+            response = requests.get(url, timeout=API_TIMEOUT)
             response.raise_for_status()
             device_info = response.json()
             logger.info(f"Device {target_ip} responded.")
             actual_version = device_info.get("version")
-            
+
             if not actual_version:
                 logger.warning(f"Device {target_ip} responded but version field missing or empty. Retrying...")
                 time.sleep(check_interval)
                 elapsed_wait += check_interval
                 continue # Go to next iteration of while loop
 
-            # --- Comparison Logic --- 
+            # --- Comparison Logic ---
             logger.info(f"Device {target_ip} reported version: '{actual_version}'")
             success = False
             match_reason = "No Match"
@@ -267,28 +267,18 @@ def verify_flash_success(target_ip: str, expected_version: str | None):
             elif actual_version == expected_base_version:
                 success = True
                 match_reason = f"Exact match with base expected version ('{expected_base_version}')"
-            # 3. Check if device version STARTS WITH the base tag + hyphen (e.g., v2.6.2-...) 
+            # 3. Check if device version STARTS WITH the base tag + hyphen (e.g., v2.6.2-...)
             elif actual_version.startswith(expected_base_version + "-"):
                  success = True
                  match_reason = f"Starts with expected base version ('{expected_base_version}-')"
 
-            # --- Log Result --- 
+            # --- Log Result ---
             if success:
-                logger.info(f"""
-        -------------------------------------------------------------
-          SUCCESS: Device {target_ip} online with matching version: '{actual_version}'
-                   Reason: {match_reason}
-        -------------------------------------------------------------
-        """)
+                logger.info(f"SUCCESS: Device {target_ip} online with matching version: '{actual_version}'")
                 return True # Explicitly return True on success
             else:
                 # Log failure only once if version is present but doesn't match
-                logger.error(f"""
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-          FAILURE: Device {target_ip} online but has WRONG version: '{actual_version}'
-                   (Expected base '{expected_base_version}' or full '{expected_full_version}')
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        """)
+                logger.error(f"FAILURE: Device {target_ip} online but has WRONG version: '{actual_version}' (Expected: '{expected_full_version}')")
                 return False # Explicitly return False on mismatch
 
         except requests.exceptions.Timeout: logger.debug(f"Timeout connecting to {target_ip}... Retrying...")
@@ -300,13 +290,8 @@ def verify_flash_success(target_ip: str, expected_version: str | None):
         time.sleep(check_interval)
         elapsed_wait += check_interval
 
-    logger.error(f"""
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-          FAILURE: Device {target_ip} did not respond or report correct
-                   version within {max_wait} seconds after flashing.
-        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        """)
-    return False 
+    logger.error(f"FAILURE: Device {target_ip} did not respond or report correct version within {max_wait} seconds after flashing.")
+    return False
 
 # Insert shared flashing logic helper
 from pathlib import Path  # ensure Path is available
@@ -380,11 +365,22 @@ def _flash_devices_core(target_ips: list[str],
 def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_version: str):
     """Handles the flashing phase for multiple devices using shared logic."""
     from .utils import CONTAINER_OUTPUT_DIR
+    from .color_formatter import Colors
+
     if not args.flash_ip:
-        logger.info(f"\n--- Build Process Complete (No Flashing Requested) ---")
-        logger.info(f"Versioned artifacts for tag '{selected_tag}' available in: {CONTAINER_OUTPUT_DIR}")
-        logger.info("Run with --flash-ip <ip1,ip2...> to attempt flashing.")
+        # No flashing requested, just show a simple message
         return
+
+    # Display build information at the beginning
+    print("\n" + "=" * 60)
+    print(f"{Colors.BOLD}{Colors.BRIGHT_GREEN}BUILD INFORMATION{Colors.RESET}")
+    print("=" * 60)
+
+    if selected_tag:
+        print(f"{Colors.BOLD}Tag:{Colors.RESET}           {Colors.BRIGHT_CYAN}{selected_tag}{Colors.RESET}")
+    if expected_version:
+        print(f"{Colors.BOLD}Version:{Colors.RESET}       {Colors.BRIGHT_CYAN}{expected_version}{Colors.RESET}")
+    print("=" * 60 + "\n")
 
     target_ips = [ip.strip() for ip in args.flash_ip.split(',') if ip.strip()]
     version_suffix = expected_version or selected_tag
@@ -398,7 +394,12 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
         except EOFError:
             return False
 
+    # Custom progress function that filters out redundant messages
     def cli_progress(status, message, progress=None):
+        # Skip the "Flash completed successfully" message as it's redundant
+        if status == 'completed' and "Flash completed successfully" in message:
+            return
+
         if status == 'progress':
             logger.info(message)
         elif status == 'warning':
@@ -424,4 +425,4 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
 # Need to import argparse for type hint
 import argparse
 
-# ... (rest of the file remains unchanged) ... 
+# ... (rest of the file remains unchanged) ...
