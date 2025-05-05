@@ -51,7 +51,7 @@ def test_flash_full_success(tmp_path, monkeypatch):
     assert events[4] == ('progress', 'Uploading firmware to 1.2.3.4...', 40)
     assert events[5] == ('progress', 'Firmware uploaded.', 70)
     assert events[6] == ('progress', 'Verifying flash success (waiting for reboot)...', 80)
-    assert events[7] == ('completed', 'Flash completed successfully.', 100)
+    assert events[7] == ('completed', 'Flash completed.', 100)
 
 
 def test_flash_skip_confirmation(tmp_path, monkeypatch):
@@ -122,4 +122,4 @@ def test_flash_firmware_failure(tmp_path, monkeypatch):
     )
 
     # Expect firmware error at 70%
-    assert ('error', 'Firmware upload failed.', 70) in events 
+    assert ('error', 'Firmware upload failed.', 70) in events

@@ -270,11 +270,12 @@ def verify_flash_success(target_ip: str, expected_version: str | None):
 
             # --- Log Result ---
             if success:
-                logger.info(f"SUCCESS: Device {target_ip} online with matching version: '{actual_version}'")
+                # Simple success message without ASCII art
+                logger.info(f"Device {target_ip} successfully flashed with version: '{actual_version}'")
                 return True # Explicitly return True on success
             else:
-                # Log failure only once if version is present but doesn't match
-                logger.error(f"FAILURE: Device {target_ip} online but has WRONG version: '{actual_version}' (Expected: '{expected_full_version}')")
+                # Log failure once if version is present but doesn't match
+                logger.error(f"Device {target_ip} has incorrect version: '{actual_version}' (Expected: '{expected_full_version}')")
                 return False # Explicitly return False on mismatch
 
         except requests.exceptions.Timeout: logger.debug(f"Timeout connecting to {target_ip}... Retrying...")
@@ -347,8 +348,8 @@ def _flash_devices_core(target_ips: list[str],
                 # Verifying flash (80%)
                 progress_fn('progress', 'Verifying flash success (waiting for reboot)...', 80)
                 if verify_flash_success(target_ip, expected_version):
-                    # Completed (100%)
-                    progress_fn('completed', 'Flash completed successfully.', 100)
+                    # Completed (100%) with simple success message
+                    progress_fn('completed', 'Flash completed.', 100)
                 else:
                     # Verification failed (100%)
                     progress_fn('error', 'Flash verification failed.', 100)
@@ -394,6 +395,10 @@ def _handle_flashing(args: argparse.Namespace, selected_tag: str, expected_versi
     def cli_progress(status, message, progress=None):
         # Skip the "Flash completed successfully" message as it's redundant
         if status == 'completed' and "Flash completed successfully" in message:
+            return
+
+        # Skip the "Builder Finished" message
+        if "Builder Finished" in message:
             return
 
         if status == 'progress':

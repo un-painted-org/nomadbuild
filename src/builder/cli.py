@@ -252,7 +252,7 @@ def _display_build_summary(selected_tag, expected_version, args):
     from .color_formatter import Colors
 
     # Only show summary if we did a build (not for flash)
-    if not (args.tag or args.force_rebuild) or args.flash_ip:
+    if args.flash_ip:
         return
 
     # Get the output directory
@@ -291,6 +291,11 @@ def _display_build_summary(selected_tag, expected_version, args):
 
     print("=" * 60 + "\n")
 
+def _display_flash_summary(selected_tag, expected_version, args):
+    """Displays a simplified summary after flashing."""
+    # This function is intentionally empty to prevent displaying a summary after flashing
+    pass
+
 def main():
     """Main entry point for the CLI application."""
     args = _parse_arguments()
@@ -315,7 +320,7 @@ def main():
     # Pass necessary args to _handle_flashing (from device.py)
     _handle_flashing(args, selected_tag, expected_version)
 
-    # Display a user-friendly build summary
+    # Display a user-friendly build summary (only for build, not for flash)
     _display_build_summary(selected_tag, expected_version, args)
 
 if __name__ == "__main__":
