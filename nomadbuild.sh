@@ -263,7 +263,8 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
                 sleep $delay
                 printf "\b\b\b\b\b\b"
             done
-            printf "    \b\b\b\b"
+            # Clear the spinner completely
+            printf "      \b\b\b\b\b\b"
         }
 
         # Make the script executable
@@ -277,9 +278,10 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
         # Check if the download was successful
         wait $DOWNLOAD_PID
         if [ $? -ne 0 ]; then
-            echo -e "\nWARNING: download_vendors.sh failed. CDN dependencies may not be properly embedded."
+            printf "failed\n"
+            echo "WARNING: download_vendors.sh failed. CDN dependencies may not be properly embedded."
         else
-            echo "done"
+            printf "done\n"
         fi
     else
         echo "WARNING: download_vendors.sh script not found at ./scripts/download_vendors.sh. CDN dependencies may not be properly embedded."
@@ -314,11 +316,12 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
     rm -f /tmp/docker_build_output.$$.$RANDOM
 
     if [ $BUILD_EXIT_CODE -eq 0 ]; then
-        echo "done"
+        printf "done\n"
         echo "Image build complete. ID: $BUILD_OUTPUT" # Output only the image ID on success
         BUILD_WAS_PERFORMED=true
     else
-        echo -e "\nError: Docker image build failed."
+        printf "failed\n"
+        echo "Error: Docker image build failed."
         echo "Build output: $BUILD_OUTPUT"
         exit 1
     fi
