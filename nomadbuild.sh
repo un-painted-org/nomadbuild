@@ -254,18 +254,17 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
         # Define a function for the spinner animation
         spinner() {
             local pid=$1
-            local delay=0.1
-            local spinstr='|/-\'
-            tput civis  # Hide cursor
+            local delay=0.2
+            local i=1
+            local sp="/-\|"
+            echo -n " "
+
             while ps -p $pid > /dev/null; do
-                local temp=${spinstr#?}
-                printf " [%c]" "$spinstr"
-                local spinstr=$temp${spinstr%"$temp"}
+                printf "\b%s" "${sp:i++%${#sp}:1}"
                 sleep $delay
-                printf "\b\b\b"
             done
-            printf "   \b\b\b"
-            tput cnorm  # Restore cursor
+
+            printf "\b "
         }
 
         # Make the script executable
@@ -278,7 +277,8 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
 
         # Check if the download was successful
         wait $DOWNLOAD_PID
-        if [ $? -ne 0 ]; then
+        DOWNLOAD_EXIT_CODE=$?
+        if [ $DOWNLOAD_EXIT_CODE -ne 0 ]; then
             printf "failed\n"
             echo "WARNING: download_vendors.sh failed. CDN dependencies may not be properly embedded."
         else
@@ -301,8 +301,11 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
     # Build the image using docker build command directly from project root
     echo -n "Building Docker image (this may take a few minutes)... "
 
+    # Create a unique temporary file for this run
+    TEMP_OUTPUT_FILE="/tmp/docker_build_output.$$"
+
     # Run the build command in the background and capture its output
-    eval $BUILD_CMD > /tmp/docker_build_output.$$.$RANDOM 2>&1 &
+    eval $BUILD_CMD > "$TEMP_OUTPUT_FILE" 2>&1 &
     BUILD_PID=$!
 
     # Show spinner while building
@@ -313,8 +316,8 @@ if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
     BUILD_EXIT_CODE=$?
 
     # Get the build output
-    BUILD_OUTPUT=$(cat /tmp/docker_build_output.$$.$RANDOM)
-    rm -f /tmp/docker_build_output.$$.$RANDOM
+    BUILD_OUTPUT=$(cat "$TEMP_OUTPUT_FILE")
+    rm -f "$TEMP_OUTPUT_FILE"
 
     if [ $BUILD_EXIT_CODE -eq 0 ]; then
         printf "done\n"
