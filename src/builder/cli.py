@@ -251,8 +251,13 @@ def _display_build_summary(selected_tag, expected_version, args):
     """Displays a user-friendly summary of the build results."""
     from .color_formatter import Colors
 
-    # Only show summary if we did a build (not for flash)
+    # Skip summary if we're flashing or if we're in a special mode
     if args.flash_ip:
+        return
+
+    # Check if we're running in a special mode (like --build-image clean)
+    # We can detect this by checking an environment variable set by the shell script
+    if os.environ.get('NOMADBUILD_ONLY_BUILD_IMAGE') == 'true':
         return
 
     # Get the output directory

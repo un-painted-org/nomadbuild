@@ -182,6 +182,8 @@ if [ "$HAS_ACTION_FLAG" = false ]; then
             echo "Only --build-image specified."
         fi
         ONLY_BUILD_IMAGE=true
+        # Set environment variable to indicate we're only building the image
+        export NOMADBUILD_ONLY_BUILD_IMAGE=true
     else
         # Display header with version
         # display_header # Already displayed at the top
@@ -611,7 +613,14 @@ fi
 
 CMD_IN_CONTAINER=("python3" "-m" "src.builder.cli")
 echo "Running docker container with command: ${CMD_IN_CONTAINER[@]} ${DOCKER_CMD_ARGS[@]}"
-docker run -it --rm -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
+
+# Pass environment variables to the container if they are set
+ENV_VARS=()
+if [ -n "${NOMADBUILD_ONLY_BUILD_IMAGE}" ]; then
+    ENV_VARS+=("-e" "NOMADBUILD_ONLY_BUILD_IMAGE=${NOMADBUILD_ONLY_BUILD_IMAGE}")
+fi
+
+docker run -it --rm ${ENV_VARS[@]} -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
 
 EXIT_CODE=$?
 exit $EXIT_CODE
