@@ -126,6 +126,7 @@ while [[ $# -gt 0 ]]; do
             # Check if the next argument is "clean"
             if [[ $# -gt 1 && "$2" == "clean" ]]; then
                 CLEAN_IMAGE=true;
+                HAS_ACTION_FLAG=true;
                 shift 2;
             else
                 shift;
@@ -175,7 +176,11 @@ done
 ONLY_BUILD_IMAGE=false
 if [ "$HAS_ACTION_FLAG" = false ]; then
     if [ "$BUILD_IMAGE" = true ]; then
-        echo "Only --build-image specified."
+        if [ "$CLEAN_IMAGE" = true ]; then
+            echo "Building a clean Docker image (removing existing image first)..."
+        else
+            echo "Only --build-image specified."
+        fi
         ONLY_BUILD_IMAGE=true
     else
         # Display header with version
@@ -198,6 +203,7 @@ if [ "$CLEAN_IMAGE" = true ]; then
         echo "Removing existing Docker image: $IMAGE_NAME..."
         if docker rmi -f "$IMAGE_NAME" &> /dev/null; then
             echo "Successfully removed existing Docker image."
+            echo "This ensures a completely fresh build after upgrading nomadbuild."
             # Force build image flag to true
             BUILD_IMAGE=true
             # Force no-cache to ensure a completely fresh build
@@ -231,10 +237,14 @@ fi
 # --- Image Check & Build ---
 # Build if image doesn't exist OR if --build-image flag is explicitly set
 if [ "$IMAGE_EXISTS" = false ] || [ "$BUILD_IMAGE" = true ]; then
-    if [ "$BUILD_IMAGE" = true ] && [ "$IMAGE_EXISTS" = true ]; then
+    if [ "$BUILD_IMAGE" = true ] && [ "$IMAGE_EXISTS" = true ] && [ "$CLEAN_IMAGE" = false ]; then
         echo "Forcing rebuild of existing Docker image: $IMAGE_NAME..."
     elif [ "$IMAGE_EXISTS" = false ]; then
-        echo "Docker image '$IMAGE_NAME' not found locally. Building new image..."
+        if [ "$CLEAN_IMAGE" = true ]; then
+            echo "Building fresh Docker image after clean removal..."
+        else
+            echo "Docker image '$IMAGE_NAME' not found locally. Building new image..."
+        fi
     fi
 
     # Ensure vendor files are downloaded before building image
