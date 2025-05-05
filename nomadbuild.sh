@@ -123,10 +123,10 @@ while [[ $# -gt 0 ]]; do
             DOCKER_CMD_ARGS+=("--flash-ip" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
         --build-image)
             BUILD_IMAGE=true;
+            HAS_ACTION_FLAG=true;
             # Check if the next argument is "clean"
             if [[ $# -gt 1 && "$2" == "clean" ]]; then
                 CLEAN_IMAGE=true;
-                HAS_ACTION_FLAG=true;
                 shift 2;
             else
                 shift;
@@ -174,29 +174,28 @@ done
 
 # --- Check Flags and Decide Action ---
 ONLY_BUILD_IMAGE=false
-if [ "$HAS_ACTION_FLAG" = false ]; then
-    if [ "$BUILD_IMAGE" = true ]; then
-        if [ "$CLEAN_IMAGE" = true ]; then
-            echo "Building a clean Docker image (removing existing image first)..."
-        else
-            echo "Only --build-image specified."
-        fi
-        ONLY_BUILD_IMAGE=true
-        # Set environment variable to indicate we're only building the image
-        export NOMADBUILD_ONLY_BUILD_IMAGE=true
-    else
-        # Display header with version
-        # display_header # Already displayed at the top
 
-        # Show simplified help for no arguments
-        echo "To use this tool, please specify an action:"
-        echo
-        printf "%b\n" "\e[32m• For beginners: ./nomadbuild.sh --webui    (Recommended)\e[0m"
-        printf "%b\n" "\e[33m• Build firmware: ./nomadbuild.sh --build\e[0m"
-        printf "%b\n" "\e[35m• See all options: ./nomadbuild.sh --help\e[0m"
-        echo
-        exit 0
+# If --build-image was specified (with or without clean), we only want to build the image
+if [ "$BUILD_IMAGE" = true ]; then
+    if [ "$CLEAN_IMAGE" = true ]; then
+        echo "Building a clean Docker image (removing existing image first)..."
+    else
+        echo "Only --build-image specified."
     fi
+    ONLY_BUILD_IMAGE=true
+elif [ "$HAS_ACTION_FLAG" = false ]; then
+    # No action flag was specified
+    # Display header with version
+    # display_header # Already displayed at the top
+
+    # Show simplified help for no arguments
+    echo "To use this tool, please specify an action:"
+    echo
+    printf "%b\n" "\e[32m• For beginners: ./nomadbuild.sh --webui    (Recommended)\e[0m"
+    printf "%b\n" "\e[33m• Build firmware: ./nomadbuild.sh --build\e[0m"
+    printf "%b\n" "\e[35m• See all options: ./nomadbuild.sh --help\e[0m"
+    echo
+    exit 0
 fi
 
 # Handle clean image request
@@ -614,13 +613,7 @@ fi
 CMD_IN_CONTAINER=("python3" "-m" "src.builder.cli")
 echo "Running docker container with command: ${CMD_IN_CONTAINER[@]} ${DOCKER_CMD_ARGS[@]}"
 
-# Pass environment variables to the container if they are set
-ENV_VARS=()
-if [ -n "${NOMADBUILD_ONLY_BUILD_IMAGE}" ]; then
-    ENV_VARS+=("-e" "NOMADBUILD_ONLY_BUILD_IMAGE=${NOMADBUILD_ONLY_BUILD_IMAGE}")
-fi
-
-docker run -it --rm ${ENV_VARS[@]} -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
+docker run -it --rm -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
 
 EXIT_CODE=$?
 exit $EXIT_CODE
