@@ -45,14 +45,27 @@ class DummySpinner:
 # ----------------------
 
 @patch('src.builder.device.requests')
-def test_verify_bitaxe_target_success(mock_requests):
+def test_verify_bitaxe_target_unknown_model_rejected(mock_requests):
+    # This test verifies that devices with unknown models are rejected for safety
     info = {"hostname": "axe001", "version": "v1.0", "ASICModel": "BM1366"}
     mock_requests.get.return_value = DummyResponse(200, info)
     # ensure LOADED_MODELS_CONFIG empty to test fallback
     device_mod.LOADED_MODELS_CONFIG = []
     dev_info, model = device_mod.verify_bitaxe_target("192.0.2.1")
+    # With our enhanced verification, unknown models should be rejected
+    assert dev_info is None and model is None
+
+@patch('src.builder.device.requests')
+def test_verify_bitaxe_target_success(mock_requests):
+    # This test verifies that devices with proper identification are accepted
+    info = {"hostname": "axe001", "version": "v1.0", "ASICModel": "BM1366", "boardVersion": "401"}
+    mock_requests.get.return_value = DummyResponse(200, info)
+    # ensure LOADED_MODELS_CONFIG empty to test fallback
+    device_mod.LOADED_MODELS_CONFIG = []
+    dev_info, model = device_mod.verify_bitaxe_target("192.0.2.1")
+    # With proper board version, it should be identified as a Bitaxe Supra
     assert dev_info == info
-    assert model.startswith("Unknown Model")
+    assert model == "Bitaxe Supra"
 
 @patch('src.builder.device.requests')
 def test_verify_bitaxe_target_missing_fields(mock_requests):
@@ -112,4 +125,4 @@ def test_get_identified_model_from_config():
     ]
     device_info = {"deviceModel": "bitaxe_s3", "ASICModel": "BM1366"}
     model_name = device_mod.get_identified_model(device_info)
-    assert model_name == "Bitaxe S3" 
+    assert model_name == "Bitaxe S3"
