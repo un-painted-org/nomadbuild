@@ -67,8 +67,8 @@ Actions:
   --tag <VERSION>       Build specific firmware version (e.g., v2.6.3)
   --flash-ip <IP>       Flash firmware to device at <IP>
   --restart-webui       Restart web UI (stops existing container)
-  --build-image         Only build/rebuild the Docker image
-  --clean-image         Remove existing Docker image and build a fresh one
+  --build-image [clean] Only build/rebuild the Docker image
+                        Add 'clean' to remove existing image first (e.g., after upgrade)
   --test [OPTIONS]      Run tests (passes options to test.sh)
   --repro               Run reproducibility check
   --help                Show this help
@@ -84,7 +84,7 @@ Examples:
   ./nomadbuild.sh --webui
   ./nomadbuild.sh --build --tag v2.6.3
   ./nomadbuild.sh --flash-ip 192.168.1.100
-  ./nomadbuild.sh --clean-image
+  ./nomadbuild.sh --build-image clean
 
 EOF
     exit 0
@@ -122,9 +122,14 @@ while [[ $# -gt 0 ]]; do
              if [[ -z "$2" || "$2" == --* ]]; then echo "Error: --flash-ip requires an argument." >&2; show_help; fi
             DOCKER_CMD_ARGS+=("--flash-ip" "$2"); HAS_ACTION_FLAG=true; shift 2 ;;
         --build-image)
-            BUILD_IMAGE=true; shift ;;
-        --clean-image)
-            CLEAN_IMAGE=true; HAS_ACTION_FLAG=true; shift ;;
+            BUILD_IMAGE=true;
+            # Check if the next argument is "clean"
+            if [[ $# -gt 1 && "$2" == "clean" ]]; then
+                CLEAN_IMAGE=true;
+                shift 2;
+            else
+                shift;
+            fi ;;
         --no-cache)
             NO_CACHE=true; shift ;;
         --force-flash)

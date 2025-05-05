@@ -12,7 +12,7 @@ This guide expands on the quick-start commands from the main README.
 | Goal | Command |
 | --- | --- |
 | Build Docker image | `./nomadbuild.sh --build-image` |
-| Clean and rebuild Docker image | `./nomadbuild.sh --clean-image` |
+| Clean and rebuild Docker image | `./nomadbuild.sh --build-image clean` |
 | Launch Web-UI | `./nomadbuild.sh --webui` |
 | Build latest stable tag (CLI) | `./nomadbuild.sh --build` |
 | Build specific tag | `./nomadbuild.sh --tag v2.6.3` |
@@ -42,4 +42,4 @@ Runs two consecutive builds inside Docker and compares SHA-256 hashes of generat
 * **Build fails** – ensure internet connectivity; rerun `--build-image` if toolchain image is outdated.
 * **Flash fails** – verify IP address, make sure device and host are on same network.
 * **Port 9090 busy** – pass `--restart-webui` to stop existing container.
-* **After upgrading** – use `--clean-image` to ensure you're using a fresh Docker image after upgrading to a new nomadbuild release.
+* **After upgrading** – use `--build-image clean` to ensure you're using a fresh Docker image after upgrading to a new nomadbuild release.
