@@ -2,18 +2,13 @@
 
 This document outlines how to run the full test suite for the project, both inside Docker and in a local Python environment.
 
-## Project Rules Reminder
-- Do not mark backlog items as completed without explicit instruction.
-- Do not delete files; any removals must be moved to the `archive/` directory.
-- Only work on a single backlog item at a time.
-
 ## Prerequisites
 
 ### Using Docker
 - Ensure [Docker](https://www.docker.com/) is installed and running.
 - The Docker image `nomadbuild` should be built. To build, run:
   ```bash
-  docker build -t nomadbuild .
+  ./nomadbuild.sh --build-image
   ```
 
 ## Running Tests with Docker
@@ -21,30 +16,17 @@ This document outlines how to run the full test suite for the project, both insi
 From the project root, run the provided test script:
 
 ```bash
-# Run all tests (default)
-./scripts/test.sh --all
-
-# Run only builder tests
-./scripts/test.sh --builder
-
-# Run only web UI tests
-./scripts/test.sh --web-ui
-
-# Run version-related tests
-./scripts/test.sh --version
-
-# Run tests in a specific path
-./scripts/test.sh --path src/tests/my_test_file.py
-
-# Run quietly (minimal output)
-./scripts/test.sh --quiet
+# Run all tests
+./nomadbuild.sh --test
 ```
 
 The script will:
 1. Verify or build the `nomadbuild` image.
 2. Mount the project into the container.
 3. Clear Python bytecode files.
-4. Invoke `pytest` with the selected path.
+4. Invoke `pytest` to run all tests.
+
+**Note:** While the `--test` command supports additional arguments like `--all`, `--builder`, `--web-ui`, `--version`, `--path`, and `--quiet`, these may not work as expected when passed through `nomadbuild.sh`. For more specific test runs, use the `scripts/test.sh` script directly inside the container.
 
 ## Test Organization
 
@@ -52,29 +34,13 @@ The script will:
 - `src/tests/test_builder_gitops.py`: Integration-style tests for Git operations in the build process.
 - Additional tests for web UI and version management may be found under `src/tests/`.
 
----
-
-# Running the NomadBuild Test Suite
-
-NomadBuild ships with a comprehensive pytest suite covering build orchestration, flashing helpers, and the Web-UI backend.
-
-## Using Docker (recommended)
-
-```bash
-# Ensure the image is built
-./nomadbuild.sh --build-image
-
-# Run tests inside the container
-./scripts/test.sh --quiet
-```
-
 ## Container Environment Requirement
 
 **Important**: All tests are designed to run exclusively inside the Docker container environment. This ensures reproducibility and consistent test results across different development environments.
 
 The test suite includes verification that tests are running inside a container environment and will fail with a clear error message if run outside the container.
 
-Always use the provided `./scripts/test.sh` script to run tests, which ensures they run inside the Docker container.
+Always use the provided `./nomadbuild.sh --test` command to run tests, which ensures they run inside the Docker container.
 
 ## What Gets Tested?
 
@@ -88,3 +54,53 @@ Always use the provided `./scripts/test.sh` script to run tests, which ensures t
 | Web-UI socket events | `src/tests/test_web_ui.py` |
 
 All tests must pass (currently over 140 tests) before merging or tagging a release.
+
+## Project Scripts and Their Responsibilities
+
+The project includes several shell scripts that handle different aspects of the build, test, and deployment process. Here's a comprehensive table of the main scripts and their responsibilities:
+
+| Script | Location | Responsibility |
+| --- | --- | --- |
+| `nomadbuild.sh` | Project root | Main entry point script that provides a unified interface for all operations (build, flash, test, etc.) |
+| `entrypoint_wrapper.sh` | `scripts/` | Sets up the ESP-IDF environment and executes commands inside the Docker container |
+| `test.sh` | `scripts/` | Runs the test suite inside the Docker container with various options |
+| `repro.sh` | `scripts/` | Performs reproducibility checks for a specific ESP-Miner tag |
+| `run_repro_check.sh` | `scripts/` | Internal script called by `repro.sh` to execute the reproducibility check |
+| `generate_dockerfile.sh` | `scripts/` | Generates the Dockerfile from config.yaml and Dockerfile.template |
+| `generate_dockerfile.py` | `scripts/` | Python script called by generate_dockerfile.sh to handle the actual generation |
+| `download_vendors.sh` | `scripts/` | Downloads vendor JavaScript libraries for the web UI |
+| `check_vendor_files.sh` | `scripts/` | Verifies that vendor JavaScript libraries are present |
+| `update_version.sh` | `scripts/` | Updates version information in templates |
+| `verify_base_image_digest.sh` | `scripts/` | Verifies that the base image digest matches the pinned configuration |
+| `verify_container.sh` | `scripts/` | Verifies that code is running inside a container |
+| `verify_pinned_versions.sh` | `scripts/` | Verifies that installed packages match the pinned versions |
+| `verify_toolchain_versions.sh` | `scripts/` | Verifies that toolchain versions match the pinned versions |
+| `add_license_headers.sh` | `scripts/` | Adds license headers to source files |
+
+These scripts work together to provide a seamless experience for building, testing, and deploying the firmware.
+
+## Advanced Testing Features
+
+### Testing with Custom ESP-Miner Repository
+
+For developers working on ESP-Miner forks or pull requests, NomadBuild supports building firmware from custom ESP-Miner repositories using an environment variable:
+
+```bash
+# Build from a custom ESP-Miner repository
+NOMADBUILD_ESP_MINER_REPO_URL="https://github.com/yourusername/ESP-Miner.git" ./nomadbuild.sh --build --tag v2.7.0
+
+# Note: The --tag parameter only works with actual tags, not branches
+# To test a branch, you need to create a tag in your fork first
+```
+
+This feature is particularly useful for:
+- Testing tagged releases from your fork before submitting pull requests
+- Verifying fixes for issues by creating a tag in your fork
+- Testing experimental features by creating tags in your development branches
+
+To test changes from a branch:
+1. Push your changes to your fork
+2. Create a tag in your fork (e.g., `git tag v2.7.0-myfeature && git push origin v2.7.0-myfeature`)
+3. Use that tag with the NOMADBUILD_ESP_MINER_REPO_URL environment variable
+
+When using a custom repository URL, NomadBuild will display a clear warning indicating that a non-standard source is being used.

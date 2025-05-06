@@ -13,7 +13,12 @@ import time
 import itertools
 import hashlib
 import json
+import datetime
 from pathlib import Path
+from typing import List, Dict, Any, Optional, Tuple, Callable
+
+# Import ESP_MINER_REPO directly to avoid circular imports
+ESP_MINER_REPO = "https://github.com/bitaxeorg/ESP-Miner.git"
 import threading
 import webbrowser
 import random
@@ -292,11 +297,24 @@ def copy_artifacts_to_output(firmware_build_path: Path, built_tag: str, expected
 def create_and_save_build_info(copied_artifact_paths: list[Path],
                                built_tag: str,
                                expected_version: str,
-                               output_dir: Path) -> dict:
+                               output_dir: Path,
+                               is_custom_repo: bool = False,
+                               custom_repo_url: str = None) -> dict:
     """Calculates hashes, identifies key binaries, creates build_info dict, and saves it.
 
     Args:
         copied_artifact_paths: List of Path objects pointing to the copied artifacts
+        built_tag: The tag that was built
+        expected_version: The expected version string
+        output_dir: The directory to save the build_info.json file
+        is_custom_repo: Whether a custom repository URL was used
+        custom_repo_url: The custom repository URL if used
+
+    Returns:
+        dict: The build information dictionary
+
+    Raises:
+        ValueError: If custom repository information is missing from the saved file
                                in the output directory.
         built_tag: The specific git tag that was built.
         expected_version: The full version string (e.g., tag + suffix).
@@ -361,8 +379,29 @@ def create_and_save_build_info(copied_artifact_paths: list[Path],
         'files': firmware_relative_files, # The list of all relative paths
         'esp_miner_bin_rel_path': esp_miner_rel_path, # Specific relative path
         'www_bin_rel_path': www_bin_rel_path,         # Specific relative path
-        'sha256_hashes': firmware_hashes
+        'sha256_hashes': firmware_hashes,
     }
+
+    # Add repo_url field with the new format
+    repo_url = custom_repo_url if is_custom_repo else ESP_MINER_REPO
+    build_info['repo_url'] = {
+        'custom': bool(is_custom_repo),
+        'url': repo_url
+    }
+
+    # Log the repository information with more details
+    logger.info(f"Adding repository information to build_info dictionary:")
+    logger.info(f"  - Repository URL: {repo_url}")
+    logger.info(f"  - Custom repository: {bool(is_custom_repo)}")
+    logger.debug(f"  - Full repo_url field: {build_info['repo_url']}")
+
+    # For backward compatibility, also include the custom_repo field if using a custom repo
+    if is_custom_repo and custom_repo_url:
+        build_info['custom_repo'] = {
+            'used': True,
+            'url': custom_repo_url
+        }
+        logger.debug(f"  - Added backward compatibility custom_repo field: {build_info['custom_repo']}")
 
     # Define the path for build_info.json
     build_info_path = output_dir / BUILD_INFO_FILE
@@ -373,19 +412,101 @@ def create_and_save_build_info(copied_artifact_paths: list[Path],
         output_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Saving build info to {build_info_path}...")
+        # Log the keys in the build_info dictionary to help with debugging
+        logger.debug(f"Keys in build_info dictionary before saving: {list(build_info.keys())}")
+
+        # Verify that repo_url is in the dictionary before saving
+        if 'repo_url' not in build_info:
+            logger.error("repo_url field is missing from build_info dictionary before saving!")
+            # Add it again if it's somehow missing
+            repo_url = custom_repo_url if is_custom_repo else ESP_MINER_REPO
+            build_info['repo_url'] = {
+                'custom': bool(is_custom_repo),
+                'url': repo_url
+            }
+            logger.info(f"Re-added repo_url field to build_info dictionary: {build_info['repo_url']}")
+
         # Use ensure_ascii=False for potentially non-ASCII characters in paths/tags
         # Use indent=4 for readability
         with open(build_info_path, 'w', encoding='utf-8') as f:
             json.dump(build_info, f, indent=4, ensure_ascii=False)
-        logger.info(f"Successfully saved build info to {build_info_path}.")
+
+        # Verify the file was written correctly
+        if build_info_path.exists():
+            file_size = build_info_path.stat().st_size
+            logger.info(f"Successfully saved build info to {build_info_path} ({file_size} bytes).")
+        else:
+            logger.error(f"Failed to save build info to {build_info_path}! File does not exist after writing.")
+
+        # Validate that repository information is included
+        # Read the file back to verify the information was saved
+        logger.info("Validating repository information in saved build_info.json file...")
+        try:
+            with open(build_info_path, 'r', encoding='utf-8') as f:
+                saved_build_info = json.load(f)
+
+            # Log the keys in the saved build_info dictionary
+            logger.debug(f"Keys in saved build_info dictionary: {list(saved_build_info.keys())}")
+
+            # Check for repo_url field
+            if 'repo_url' not in saved_build_info:
+                error_msg = "Repository information (repo_url field) missing from build_info.json"
+                logger.error(error_msg)
+                # Log the entire saved build_info for debugging
+                logger.error(f"Content of saved build_info: {saved_build_info}")
+                raise ValueError(error_msg)
+
+            # Log the repo_url field from the saved file
+            logger.debug(f"repo_url field in saved build_info: {saved_build_info.get('repo_url')}")
+
+            expected_url = custom_repo_url if is_custom_repo else ESP_MINER_REPO
+            if saved_build_info['repo_url'].get('url') != expected_url:
+                error_msg = f"Repository URL mismatch in build_info.json: expected '{expected_url}', got '{saved_build_info['repo_url'].get('url')}'"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            if saved_build_info['repo_url'].get('custom') != bool(is_custom_repo):
+                error_msg = f"Repository custom flag mismatch in build_info.json: expected '{bool(is_custom_repo)}', got '{saved_build_info['repo_url'].get('custom')}'"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            # Also check for backward compatibility with custom_repo field if using a custom repo
+            if is_custom_repo and custom_repo_url:
+                if 'custom_repo' not in saved_build_info:
+                    logger.warning("Legacy custom_repo field missing from build_info.json for custom repository")
+                else:
+                    if saved_build_info['custom_repo'].get('url') != expected_url:
+                        logger.warning(f"Legacy custom_repo URL mismatch in build_info.json: expected '{expected_url}', got '{saved_build_info['custom_repo'].get('url')}'")
+
+                    if saved_build_info['custom_repo'].get('used') != True:
+                        logger.warning(f"Legacy custom_repo used flag mismatch in build_info.json: expected 'True', got '{saved_build_info['custom_repo'].get('used')}'")
+
+            logger.info("Repository information successfully validated in build_info.json")
+        except json.JSONDecodeError as e:
+            error_msg = f"Error decoding JSON from build_info.json: {e}"
+            logger.error(error_msg)
+            # Try to read the raw file content for debugging
+            try:
+                with open(build_info_path, 'r', encoding='utf-8') as f:
+                    raw_content = f.read()
+                logger.error(f"Raw content of build_info.json (first 500 chars): {raw_content[:500]}")
+            except Exception as read_err:
+                logger.error(f"Could not read raw content of build_info.json: {read_err}")
+            raise ValueError(error_msg)
 
     except TypeError as e:
         logger.exception(f"Error serializing build info to JSON for {build_info_path}: {e}. Data: {build_info}")
+        raise
     except OSError as e:
         logger.exception(f"Error writing build info file {build_info_path}: {e}")
+        raise
+    except ValueError as e:
+        # This is raised by our validation code
+        logger.exception(f"Validation error for build_info.json: {e}")
+        raise
     except Exception as e:
         logger.exception(f"Unexpected error saving build info file {build_info_path}: {e}")
-        # Even if saving fails, return the created dict
+        raise
 
     return build_info
 

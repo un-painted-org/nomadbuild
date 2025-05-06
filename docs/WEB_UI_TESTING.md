@@ -27,13 +27,13 @@ The Web UI tests are organized into the following files:
 To run all Web UI tests using Docker:
 
 ```bash
-./scripts/test.sh --web-ui
+./nomadbuild.sh --test --web-ui
 ```
 
 To run a specific test file:
 
 ```bash
-./scripts/test.sh --path src/tests/test_web_ui_endpoints.py
+./nomadbuild.sh --test --path src/tests/test_web_ui_endpoints.py
 ```
 
 ### Running Natively (Not Recommended)

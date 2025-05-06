@@ -51,7 +51,7 @@ TEMPLATES_DIR = CURRENT_DIR / 'web_templates'
 logger = logging.getLogger("WebUI")
 
 # --- App Initialization ---
-app = Flask(__name__, 
+app = Flask(__name__,
             static_folder=str(STATIC_DIR),
             template_folder=str(TEMPLATES_DIR))
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -93,7 +93,7 @@ def get_cached_or_fresh_tags():
         cache_valid = True
 
     if cache_valid:
-        logger.info("Using cached tags.")
+        logger.info(f"Using cached tags. Found {len(_tag_cache['tags'])} tags in cache.")
         return _tag_cache['tags']
     else:
         logger.info("Fetching fresh tags (cache empty or expired)...")
@@ -102,24 +102,43 @@ def get_cached_or_fresh_tags():
             with _tag_cache_lock:
                 # Double-check cache validity *after* acquiring lock
                 if _tag_cache['tags'] and (time.time() - _tag_cache['last_fetched']) < TAG_CACHE_LIFETIME_SECONDS:
-                     logger.info("Another thread updated cache, using new cached tags.")
+                     logger.info(f"Another thread updated cache, using new cached tags. Found {len(_tag_cache['tags'])} tags.")
                      return _tag_cache['tags']
-                
+
                 # Perform the actual fetch and processing
+                logger.info("Setting up environment for tag fetching...")
                 builder_utils.setup_environment()
+
+                logger.info("Fetching ESP-Miner repository...")
                 repo_name = "ESP-Miner"
-                repo_path = builder_git.fetch_repo(builder_git.ESP_MINER_REPO, repo_name)
+                repo_path, is_custom, repo_url = builder_git.fetch_repo(builder_git.ESP_MINER_REPO, repo_name)
+
+                if not repo_path or not repo_path.exists():
+                    logger.error(f"Repository path does not exist or is invalid: {repo_path}")
+                    raise ValueError(f"Invalid repository path: {repo_path}")
+
+                logger.info(f"Getting stable tags from repository at {repo_path}...")
                 fresh_tags = builder_git.get_esp_miner_stable_tags(repo_path)
-                
+
+                if not fresh_tags:
+                    logger.warning("No stable tags found in repository. This is unusual and may indicate a problem.")
+                else:
+                    logger.info(f"Successfully retrieved {len(fresh_tags)} stable tags: {fresh_tags}")
+
                 # Update cache
                 _tag_cache['tags'] = fresh_tags
                 _tag_cache['last_fetched'] = time.time()
                 logger.info(f"Cache updated with {len(fresh_tags)} tags.")
                 return fresh_tags
         except Exception as e:
-            logger.exception("Error fetching or caching tags")
+            logger.exception(f"Error fetching or caching tags: {str(e)}")
             # In case of error, return potentially stale cache if available, otherwise empty
-            return _tag_cache['tags'] if _tag_cache['tags'] else []
+            if _tag_cache['tags']:
+                logger.info(f"Returning stale cache with {len(_tag_cache['tags'])} tags due to fetch error.")
+                return _tag_cache['tags']
+            else:
+                logger.error("No tags in cache and failed to fetch fresh tags. Returning empty list.")
+                return []
 
 # --- Helper Function to get build info file path ---
 def get_build_info_path() -> Path:
@@ -133,10 +152,10 @@ def load_last_build_info():
     """Loads the last successful build info directly from the JSON file."""
     build_info_path = get_build_info_path()
     logger.debug(f"[load_last_build_info] Checking path: {build_info_path}")
-    
+
     file_exists = build_info_path.exists()
     logger.debug(f"[load_last_build_info] Path exists: {file_exists}")
-    
+
     if file_exists:
         try:
             file_size = build_info_path.stat().st_size
@@ -176,7 +195,7 @@ def save_last_build_info(build_info: dict):
         with open(build_info_path, 'w') as f:
             json.dump(build_info, f, indent=4)
         logger.info(f"Successfully saved build info to {build_info_path}.")
-            
+
     except Exception as e:
         logger.exception(f"Error saving build info file {build_info_path}: {e}")
 
@@ -320,7 +339,7 @@ def get_tips():
         # Hard-coded categories as examples
         categories = ["COOLING", "POWER", "TUNING", "COMPONENT"]
         selected_category = request.args.get('category', None)
-        
+
         # In a real implementation, we'd parse the TIPPS.md file
         # For now, return a simplified structure
         tips = [{
@@ -334,11 +353,11 @@ def get_tips():
             "title": "Power Supply Selection",
             "content": "Use a stable 5V supply rated for at least 4-6A."
         }]
-        
+
         # Filter by category if specified
         if selected_category:
             tips = [tip for tip in tips if tip['category'] == selected_category]
-        
+
         return jsonify({
             "success": True,
             "categories": categories,
@@ -357,53 +376,53 @@ def scan_devices():
     try:
         # In a real implementation, this would scan the network using mDNS, ping sweep, etc.
         # For demo purposes, we'll simulate finding devices
-        
+
         # Get the IP range to scan from the request (optional)
         data = request.json or {}
         subnet = data.get('subnet', '192.168.1')  # Default to common home subnet
-        
+
         # Start a background thread to scan (since it might take a while)
         def scan_thread():
             try:
                 devices = []
-                
+
                 # Simulate a network scan
                 time.sleep(2)  # Simulate scan taking some time
-                
+
                 # In a real implementation, you would use tools like:
                 # 1. nmap: subprocess.run(['nmap', '-sn', f'{subnet}.0/24'], capture_output=True)
                 # 2. ping sweep: for i in range(1, 255): ping {subnet}.{i}
                 # 3. avahi/bonjour for mDNS lookup
-                
+
                 # Mock found devices for demo purposes
                 mock_ips = random.sample(range(2, 254), random.randint(1, 5))
                 mock_ips.sort()  # Sort IPs for consistent display
-                
+
                 for ip in mock_ips:
                     devices.append({
                         'ip': f'{subnet}.{ip}',
                         'status': 'online' if random.random() > 0.3 else 'offline',
                         'name': ''
                     })
-                
+
                 # Emit the found devices to connected clients
                 socketio.emit('devices_found', {
                     'status': 'completed',
                     'devices': devices
                 })
-                
+
             except Exception as e:
                 logger.exception("Device scan failed")
                 socketio.emit('devices_found', {
                     'status': 'failed',
                     'message': str(e)
                 })
-        
+
         # Start the scan thread
         thread = threading.Thread(target=scan_thread)
         thread.daemon = True
         thread.start()
-        
+
         return jsonify({
             'success': True,
             'message': 'Scan started'
@@ -421,33 +440,33 @@ def get_device_info():
     try:
         data = request.json
         ip_address = data.get('ip')
-        
+
         if not ip_address:
             return jsonify({
                 'success': False,
                 'error': 'IP address is required'
             }), 400
-        
+
         # In a real implementation, this would talk to the Bitaxe API
         # For demo, we'll generate random device information
-        
+
         # Start a background thread to get device info (might take a while)
         def info_thread():
             try:
                 # Simulate API call
                 time.sleep(1)
-                
+
                 # In real implementation, this would be an HTTP request to the device's API
                 # Example: requests.get(f'http://{ip_address}/api/status', timeout=5)
-                
+
                 # 80% chance the device is online for demo purposes
                 is_online = random.random() > 0.2
-                
+
                 if is_online:
                     # Mock versions that would be returned by real devices
                     versions = ['v2.6.3', 'v2.6.2', 'v2.6.4-beta', 'v2.7.0']
                     random_version = versions[random.randint(0, len(versions) - 1)]
-                    
+
                     # Generate mock stats
                     device_info = {
                         'status': 'online',
@@ -462,14 +481,14 @@ def get_device_info():
                         'status': 'offline',
                         'lastSeen': 'Unknown'
                     }
-                
+
                 # Emit device info to the client
                 socketio.emit('device_info', {
                     'ip': ip_address,
                     'info': device_info,
                     'status': 'completed'
                 })
-                
+
             except Exception as e:
                 logger.exception(f"Error getting device info for {ip_address}")
                 socketio.emit('device_info', {
@@ -477,12 +496,12 @@ def get_device_info():
                     'status': 'failed',
                     'message': str(e)
                 })
-        
+
         # Start the info thread
         thread = threading.Thread(target=info_thread)
         thread.daemon = True
         thread.start()
-        
+
         return jsonify({
             'success': True,
             'message': 'Device info request started'
@@ -501,7 +520,7 @@ def api_status():
         uptime = int(time.time() - _server_start_time)
         # Get count of active socket connections
         active_connections = len(socketio.server.eio.sockets)
-        
+
         return jsonify({
             'online': True,
             'uptime': uptime,
@@ -531,15 +550,15 @@ def get_build_log():
     try:
         # Construct the expected log file path using the utility function
         log_file_path = builder_utils.get_env_dir() / "logs" / builder_utils.IDF_BUILD_LOG_FILENAME
-        
+
         if not log_file_path.exists():
             logger.warning(f"Build log file not found at: {log_file_path}")
             return jsonify({"success": False, "error": "Build log file not found."}), 404
-            
+
         # Read the log file content
         log_content = log_file_path.read_text(encoding='utf-8')
         logger.info(f"Successfully read build log file: {log_file_path}")
-        
+
         # Return as plain text
         # Using jsonify might corrupt line breaks, return directly
         return Response(log_content, mimetype='text/plain')
@@ -551,25 +570,25 @@ def get_build_log():
 @app.route('/clear_log', methods=['POST'])
 def handle_clear_log():
     global build_thread, build_log, build_in_progress, build_log_mutex, build_canceled, repo_path, current_tag
-    
+
     with build_log_mutex:
         if build_in_progress and build_thread and build_thread.is_alive():
             logger.info("Canceling build in progress")
             build_canceled.set()
-            
+
             # Also reset the builder_build module state
             builder_build.is_building = False
             builder_build.build_progress = 0
-            
+
             # Set a timeout for waiting for the thread to finish
             join_timeout = 5.0
             build_thread.join(timeout=join_timeout)
-            
+
             # If thread is still alive after timeout, we'll proceed anyway
             # but log this situation
             if build_thread.is_alive():
                 logger.warning(f"Build thread did not terminate within {join_timeout}s")
-                
+
             # Perform deep cleaning of the build directory
             try:
                 from src.builder.builder_utils import deep_clean_build_directory
@@ -581,26 +600,26 @@ def handle_clear_log():
                         logger.warning("Build environment cleanup was incomplete, some artifacts may remain")
             except Exception as e:
                 logger.error(f"Error during deep clean: {e}")
-            
+
             # Reset all state variables
             build_in_progress = False
             build_thread = None
             build_canceled.clear()  # Reset for next build
-            
+
             # Add cancellation notice to log
             build_log += "\n\n*** BUILD CANCELED BY USER ***\n\n"
-            
+
             # Notify clients that build was canceled
             socketio.emit('build_status', {'status': 'cancelled'})
-            
+
         else:
             # Just clear the log if no build is running
             logger.info("Clearing build log")
             build_log = ""
-            
+
         # Always emit clear_log event
         socketio.emit('clear_log')
-            
+
     return jsonify(success=True)
 
 # --- Socket.IO Event Handlers ---
@@ -704,7 +723,7 @@ def handle_cancel_build():
             logger.error(f"Error during build cancellation: {error_msg}")
         # Clear active processes
         try:
-            builder_build.active_build_processes.clear()  
+            builder_build.active_build_processes.clear()
         except Exception:
             pass
         # Reset builder and UI state
@@ -765,10 +784,10 @@ def handle_flash_device(data):
         logger.error(f"[handle_flash_device] No build info found after load attempt for flash request from SID: {sid}. Emitting error.")
         emit('flash_status', {'status': 'error', 'message': 'No successful build found to flash. Build info file may be missing or corrupt.'}, room=sid)
         return
-    
+
     version = build_info.get('version') # Get the correct version key
     # Get the NEW relative path keys stored by the build process
-    esp_miner_bin_rel_path = build_info.get('esp_miner_bin_rel_path') 
+    esp_miner_bin_rel_path = build_info.get('esp_miner_bin_rel_path')
     www_bin_rel_path = build_info.get('www_bin_rel_path')
 
     # --- Resolve Paths against the firmware output directory ---
@@ -806,9 +825,9 @@ def handle_flash_device(data):
     logger.info(f"Starting flash thread for {ip_address} (SID: {sid}) with version {version}")
     # Pass ABSOLUTE paths AND expected version string to the thread function
     flash_thread = threading.Thread(target=run_flash_thread,
-                                    args=(ip_address, 
-                                          str(esp_miner_bin_abs_path), 
-                                          str(www_bin_abs_path) if www_bin_abs_path else None, 
+                                    args=(ip_address,
+                                          str(esp_miner_bin_abs_path),
+                                          str(www_bin_abs_path) if www_bin_abs_path else None,
                                           version, # Pass the expected version string
                                           flash_progress_callback),
                                     daemon=True)
@@ -861,7 +880,7 @@ def emit_build_status(status: str, message: str, progress: int = None, **kwargs)
         # We include it when emitting so existing consumers continue to work.
         payload['percent'] = progress
     payload.update(kwargs)
-    logger.info(f"[emit_build_status] Preparing to emit status='{status}', progress={progress}, msg='{message}'") 
+    logger.info(f"[emit_build_status] Preparing to emit status='{status}', progress={progress}, msg='{message}'")
     logger.debug(f"[emit_build_status] Full payload: {payload}")
     try:
         logger.debug(f"[emit_build_status] Calling socketio.emit with payload.")
@@ -908,9 +927,14 @@ def run_build_thread(tag):
         repo_name = "ESP-Miner"
         # Use environment variable for repo URL if set
         repo_url = os.environ.get("NOMADBUILD_ESP_MINER_REPO_URL", builder_git.ESP_MINER_REPO)
-        repo_path = builder_git.fetch_repo(repo_url, repo_name)
+        # Properly unpack the tuple returned by fetch_repo
+        repo_path, is_custom_repo, actual_repo_url = builder_git.fetch_repo(repo_url, repo_name)
         if not repo_path: raise ValueError(f"Failed to fetch repository: {repo_url}")
         logger.info(f"Using repository path: {repo_path}")
+        if is_custom_repo:
+            logger.info(f"Using custom repository URL: {actual_repo_url}")
+        else:
+            logger.info(f"Using default repository URL: {actual_repo_url}")
 
         if build_canceled.is_set(): raise BuildCancelledError("Build cancelled after repository fetch.")
 
@@ -993,7 +1017,7 @@ def run_build_thread(tag):
         )
 
         # Check if build was cancelled or failed (indicated by None return values)
-        if build_dir is None: 
+        if build_dir is None:
             if build_canceled.is_set():
                  logger.warning("Build was cancelled during build_esp_miner execution.")
                  raise BuildCancelledError("Build cancelled during build execution.")
@@ -1001,7 +1025,7 @@ def run_build_thread(tag):
                  # Failure already logged by build_esp_miner
                  logger.error("build_esp_miner failed (returned None, cancel not set).")
                  raise BuildFailedError("Core build process failed.")
-                 
+
         # Validate required paths after successful build
         if not all([build_dir, partition_csv_path, flasher_args_path, expected_version]):
             logger.critical("Build result tuple missing expected values after successful build.")
@@ -1013,13 +1037,13 @@ def run_build_thread(tag):
         # 4. Collect Artifacts & Prepare Output
         # build_dir is now correctly returned as a Path object
         # expected_version is also correctly returned
-        
+
         # Copy artifacts to output directory using the correct build_dir
         emit_build_status('progress', "Copying build artifacts...", 90)
         last_build_progress = 90
         copied_artifact_paths = builder_utils.copy_artifacts_to_output(
             firmware_build_path=build_dir, # Use the correct build_dir Path object
-            built_tag=actual_tag, 
+            built_tag=actual_tag,
             expected_version=expected_version
         )
         if not copied_artifact_paths:
@@ -1029,12 +1053,26 @@ def run_build_thread(tag):
         # Create and save build_info.json using the new utility function
         emit_build_status('progress', "Saving build information...", 95)
         last_build_progress = 95
-        final_build_info = builder_utils.create_and_save_build_info(
-            copied_artifact_paths=copied_artifact_paths, 
-            built_tag=actual_tag, 
-            expected_version=expected_version,
-            output_dir=builder_utils.CONTAINER_OUTPUT_DIR # Pass the output dir explicitly
-        )
+
+        # Check if we're using a custom repository
+        repo_url_override = os.environ.get("NOMADBUILD_ESP_MINER_REPO_URL")
+        is_custom_repo = repo_url_override is not None and repo_url_override != builder_git.ESP_MINER_REPO
+
+        try:
+            final_build_info = builder_utils.create_and_save_build_info(
+                copied_artifact_paths=copied_artifact_paths,
+                built_tag=actual_tag,
+                expected_version=expected_version,
+                output_dir=builder_utils.CONTAINER_OUTPUT_DIR, # Pass the output dir explicitly
+                is_custom_repo=is_custom_repo,
+                custom_repo_url=repo_url_override if is_custom_repo else None
+            )
+        except ValueError as e:
+            logger.error(f"Failed to create build information file: {e}")
+            raise BuildFailedError(f"Failed to create build information file: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error creating build information file: {e}")
+            raise BuildFailedError(f"Unexpected error creating build information file: {e}")
 
         if not final_build_info:
             # Handle error if build info creation failed
@@ -1042,46 +1080,46 @@ def run_build_thread(tag):
 
         success = True # Set success flag ONLY if all steps complete
         logger.info(f"Build for tag {actual_tag} completed successfully.")
-        
-        # ---> EMIT SUCCESS STATUS HERE (before finally block) --- 
+
+        # ---> EMIT SUCCESS STATUS HERE (before finally block) ---
         logger.debug(f"Build thread: Reached point before final emit. Success={success}")
         logger.debug(f"Build thread: Value of final_build_info before final emit: {final_build_info}")
         if success and final_build_info:
-             # --- Correctly extract data for the final emit --- 
+             # --- Correctly extract data for the final emit ---
              fw_version = final_build_info.get('version')
              main_fw_rel_path = final_build_info.get('esp_miner_bin_rel_path')
              fw_sha256 = None
              if main_fw_rel_path:
                  main_fw_filename = Path(main_fw_rel_path).name
                  fw_sha256 = final_build_info.get('sha256_hashes', {}).get(main_fw_filename)
-             
-             # --- Add detailed logging before emit --- 
+
+             # --- Add detailed logging before emit ---
              logger.info(f"Build thread: Preparing to emit 'completed' status. Success={success}")
              logger.debug(f"Build thread: final_build_info data: {final_build_info}")
-             
-             # --- Add try/except around the emit --- 
+
+             # --- Add try/except around the emit ---
              try:
-                 logger.info("Build thread: Attempting to emit 'completed' status...") 
+                 logger.info("Build thread: Attempting to emit 'completed' status...")
                  emit_build_status('completed', 'Build completed successfully',
-                                   progress=100, 
-                                   build_info=final_build_info 
+                                   progress=100,
+                                   build_info=final_build_info
                                   )
-                 logger.info("Build thread: Finished emitting 'completed' status call.") 
+                 logger.info("Build thread: Finished emitting 'completed' status call.")
                  # Add a small delay to help ensure the message is sent
-                 socketio.sleep(0.1) 
-                 logger.info("Build thread: Sleep after emit completed.") 
+                 socketio.sleep(0.1)
+                 logger.info("Build thread: Sleep after emit completed.")
              except Exception as emit_err:
                   logger.exception(f"Build thread: CRITICAL ERROR during emit_build_status('completed'): {emit_err}")
                   # We might still want to proceed to finally block to clean up state
-             # --- End try/except around emit --- 
-        # --- End Emit Success --- 
+             # --- End try/except around emit ---
+        # --- End Emit Success ---
 
     except BuildCancelledError as e:
         success = False
         error_message = str(e)
         logger.warning(f"Build Cancelled: {error_message}")
         # Ensure final cancel status is emitted (can stay in except block)
-        emit_build_status('cancelled', error_message) 
+        emit_build_status('cancelled', error_message)
 
     except (BuildFailedError, FileNotFoundError, ValueError, Exception) as e:
         success = False
@@ -1120,27 +1158,27 @@ def run_server(debug=False, auto_open=AUTO_OPEN_BROWSER):
     # Ensure server variables are initialized
     global _server_start_time
     _server_start_time = time.time()
-    
+
     # Create directories if they don't exist
     for directory in [STATIC_DIR, TEMPLATES_DIR]:
         directory.mkdir(parents=True, exist_ok=True)
-    
+
     # Ensure static directories exist
     css_dir = STATIC_DIR / 'css'
     js_dir = STATIC_DIR / 'js'
     img_dir = STATIC_DIR / 'img'
-    
+
     for directory in [css_dir, js_dir, img_dir]:
         directory.mkdir(parents=True, exist_ok=True)
-    
+
     # Verify templates directory contents
     if not (TEMPLATES_DIR / 'index.html').exists():
         logger.warning("index.html template not found. UI may not render correctly.")
-    
+
     # Open browser in a separate thread if requested
     if auto_open:
         threading.Timer(1.5, open_browser).start()
-    
+
     logger.info(f"Starting NomadBuild Web UI server on http://{HOST}:{PORT}")
     try:
         # Start the server - ensure this runs in the foreground
@@ -1159,9 +1197,9 @@ if __name__ == "__main__":
             logging.StreamHandler(sys.stdout)
         ]
     )
-    
+
     logger.info("NomadBuild Web UI starting up")
-    
+
     # Create necessary directories
     try:
         STATIC_DIR.mkdir(parents=True, exist_ok=True)
@@ -1169,9 +1207,9 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Failed to create required directories: {e}")
         sys.exit(1)
-    
+
     # Run the server
     run_server(debug=True)
-    
+
     # This line should not be reached unless server is explicitly shut down
-    logger.info("NomadBuild Web UI shutting down") 
+    logger.info("NomadBuild Web UI shutting down")

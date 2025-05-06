@@ -57,20 +57,20 @@ display_header # Call the header function early
 # Function to display help
 function show_help {
     cat << EOF
-NomadBuild - Build & Flash Bitaxe Firmware via Docker
+NomadBuild - Self-sovereign firmware builder
 
 Usage: ./nomadbuild.sh [ACTION] [OPTIONS]
 
 Actions:
   --webui               Start web UI (Recommended)
   --build               Build latest firmware (Default if no other action)
-  --tag <VERSION>       Build specific firmware version (e.g., v2.6.3)
+  --tag <VERSION>       Build specific firmware version (e.g., v2.7.0)
   --flash-ip <IP>       Flash firmware to a single device at <IP> (cannot be used with --flash-csv)
   --flash-csv <FILE>    Flash firmware to multiple devices using IP addresses from a CSV file (cannot be used with --flash-ip)
   --restart-webui       Restart web UI (stops existing container)
   --build-image [clean] Only build/rebuild the Docker image
                         Add 'clean' to remove existing image and firmware files (e.g., after upgrade)
-  --test [OPTIONS]      Run tests (passes options to test.sh)
+  --test [OPTIONS]      Run ALL tests
   --repro               Run reproducibility check
   --help                Show this help
 
@@ -79,14 +79,12 @@ Options:
   --force-flash         Flash device without confirmation
   --skip-firmware       Skip building main firmware
   --skip-www            Skip building web interface files
-  --verbose-build       Show detailed build output
 
 Examples:
   ./nomadbuild.sh --webui
-  ./nomadbuild.sh --build --tag v2.6.3
+  ./nomadbuild.sh --build --tag v2.7.0
   ./nomadbuild.sh --flash-ip 192.168.1.100
   ./nomadbuild.sh --flash-csv devices.csv
-  ./nomadbuild.sh --build-image clean
 
 EOF
     exit 0
@@ -435,7 +433,8 @@ if [ "$RUN_REPRO" = true ]; then
         mkdir -p "$FIRMWARE_DIR"
     fi
 
-    docker run -it --rm -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" "${REPRO_ARGS[@]}"
+    # Pass through any environment variables
+    docker run -it --rm -v "$FIRMWARE_DIR:/firmware" -e NOMADBUILD_ESP_MINER_REPO_URL="${NOMADBUILD_ESP_MINER_REPO_URL}" "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" "${REPRO_ARGS[@]}"
 
     EXIT_CODE=$?
     if [ $EXIT_CODE -eq 0 ]; then
@@ -570,6 +569,7 @@ if [ "$WEB_UI" = true ] || [ "$RESTART_WEB_UI" = true ]; then
     CONTAINER_ID=$(docker run -d --name nomadbuild-web --rm \
         -p 9090:9090 \
         -v "$FIRMWARE_DIR:/firmware" \
+        -e NOMADBUILD_ESP_MINER_REPO_URL="${NOMADBUILD_ESP_MINER_REPO_URL}" \
         "$IMAGE_NAME" "${CMD_IN_CONTAINER[@]}" 2>&1)
 
     # Check if container started successfully
@@ -701,7 +701,7 @@ if [ -z "$IMAGE_NAME_TO_USE" ]; then
 fi
 
 # Run the container
-docker run -it --rm -v "$FIRMWARE_DIR:/firmware" "$IMAGE_NAME_TO_USE" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
+docker run -it --rm -v "$FIRMWARE_DIR:/firmware" -e NOMADBUILD_ESP_MINER_REPO_URL="${NOMADBUILD_ESP_MINER_REPO_URL}" "$IMAGE_NAME_TO_USE" "${CMD_IN_CONTAINER[@]}" "${DOCKER_CMD_ARGS[@]}"
 
 # Clean up temporary image if created (suppress detailed output)
 if [ "$REMOVE_TEMP_IMAGE" = true ]; then

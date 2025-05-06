@@ -15,9 +15,9 @@ This guide expands on the quick-start commands from the main README.
 | Clean firmware files and rebuild Docker image | `./nomadbuild.sh --build-image clean` |
 | Launch Web-UI | `./nomadbuild.sh --webui` |
 | Build latest stable tag (CLI) | `./nomadbuild.sh --build` |
-| Build specific tag | `./nomadbuild.sh --tag v2.6.3` |
+| Build specific tag | `./nomadbuild.sh --tag v2.7.0` |
 | Flash device after build | `./nomadbuild.sh --flash-ip 192.168.1.100` |
-| Force flash without prompt | `./nomadbuild.sh --tag v2.6.3 --flash-ip 192.168.1.100 --force-flash` |
+| Force flash without prompt | `./nomadbuild.sh --tag v2.7.0 --flash-ip 192.168.1.100 --force-flash` |
 
 Windows users: run these commands from WSL or any Linux compatibility layer and access the Web-UI via browser.
 
@@ -32,7 +32,7 @@ After a successful build you will find:
 ## Reproducibility Check
 
 ```bash
-./scripts/repro.sh --tag v2.6.3
+./nomadbuild.sh --repro --tag v2.7.0
 ```
 
 Runs two consecutive builds inside Docker and compares SHA-256 hashes of generated binaries.
@@ -49,7 +49,7 @@ Runs two consecutive builds inside Docker and compares SHA-256 hashes of generat
 You can flash multiple devices at once using a CSV file:
 
 ```bash
-./nomadbuild.sh --tag v2.6.1 --flash-csv devices.csv
+./nomadbuild.sh --tag v2.7.0 --flash-csv devices.csv
 ```
 
 **Note**: The `--flash-csv` and `--flash-ip` options are mutually exclusive. Use `--flash-ip` for a single device or `--flash-csv` for multiple devices. The `--flash-ip` option only accepts a single IP address.

@@ -46,17 +46,17 @@ This file contains the backlog of items to be implemented in the NomadBuild proj
    - Test API endpoints
    - Verify real-time updates
 
-102. **Integrate Repro Commands into nomadbuild.sh** - *Pending*
+102. **Integrate Repro Commands into nomadbuild.sh** - *Completed*
    - Add reproducibility commands to main script
    - Ensure consistent interface
    - Document new options
 
-103. **Integrate Test Commands into nomadbuild.sh** - *Pending*
+103. **Integrate Test Commands into nomadbuild.sh** - *Completed*
    - Add test commands to main script
    - Pass options to test.sh
    - Document test options
 
-104. **Add Dockerfile Generation Option to nomadbuild.sh** - *Pending*
+104. **Add Dockerfile Generation Option to nomadbuild.sh** - *Completed*
    - Add option to regenerate Dockerfile
    - Integrate with existing MD5 tracking
    - Document new option
@@ -79,12 +79,12 @@ This file contains the backlog of items to be implemented in the NomadBuild proj
    - Document all options
    - Provide usage examples
 
-108. **Create Table of Scripts with Responsibilities** - *Pending*
+108. **Create Table of Scripts with Responsibilities** - *Completed*
    - Document all scripts in the project
    - List responsibilities for each script
    - Show relationships between scripts
 
-109. **Simplify and Standardize Documentation** - *Pending*
+109. **Simplify and Standardize Documentation** - *Completed*
    - Ensure consistent documentation style
    - Remove redundant information
    - Improve readability
@@ -171,7 +171,7 @@ This file contains the backlog of items to be implemented in the NomadBuild proj
    - Ensure proper resource isolation between parallel tasks
    - Implement detailed logging and diagnostics for flashing operations
 
-124. **Implement Docker Image Cleanup for Tagged Releases** - *Pending*
+124. **Implement Docker Image Cleanup for Tagged Releases** - *Completed*
    - Add safe cleanup option for nomadbuild Docker images
    - Integrate with existing --build-image option
    - Implement user confirmation before cleanup
@@ -185,7 +185,7 @@ This file contains the backlog of items to be implemented in the NomadBuild proj
    - Integrate with existing multi-stage build process
    - Document custom image build process
 
-126. **Implement CSV-Based Multi-Device Flashing** - *Pending*
+126. **Implement CSV-Based Multi-Device Flashing** - *Completed*
    - Add --flash-csv parameter to specify a CSV file with IP addresses
    - Display the number of configured IP addresses before flashing starts
    - Implement interactive confirmation for batch flashing
@@ -247,3 +247,18 @@ This file contains the backlog of items to be implemented in the NomadBuild proj
    - Resolve aliases to specific versions at runtime
    - Provide clear feedback about which specific version an alias resolves to
    - Ensure backward compatibility with explicit version specifications
+
+131. **Fix Repository URL Format in build_info.json** - *Completed*
+   - Update build_info.json to include the new repo_url field format
+   - The new format should work for both custom and default repositories
+   - We don't care about the legacy custom_repo field - it was never published
+   - Add comprehensive tests for repository URL information
+   - Fix validation logic to properly verify repository information
+
+132. **Verify Git Tag Existence Before Checkout** - *Completed*
+   - Add validation to check if a user-supplied git tag exists before attempting checkout
+   - Implement proper error handling with clear error messages when a tag doesn't exist
+   - Update documentation to explain tag validation behavior
+   - Add comprehensive tests for tag validation logic
+   - Ensure validation works for both default and custom repositories
+   - Things we don't need: Support for listing available tags to help users select valid tags

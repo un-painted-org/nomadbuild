@@ -26,12 +26,15 @@ def test_get_esp_miner_stable_tags_filters_and_limits(mock_run_cmd, tmp_path):
 # checkout_tag
 # ----------------------
 
+@patch('src.builder.git_ops.verify_tag_exists')
 @patch('src.builder.git_ops.run_command')
-def test_checkout_tag_success(mock_run_cmd, tmp_path):
+def test_checkout_tag_success(mock_run_cmd, mock_verify_tag, tmp_path):
+    # Mock verify_tag_exists to return True
+    mock_verify_tag.return_value = True
+
     # simulate sequence of git commands
     mock_run_cmd.side_effect = [
         "",          # fetch tags
-        "v1.2.3",    # tag exists
         "",          # checkout
         "deadbeef\n" # rev-parse
     ]
@@ -39,13 +42,22 @@ def test_checkout_tag_success(mock_run_cmd, tmp_path):
     assert commit == "deadbeef"
     # Ensure commands executed in order
     cmds = [call.args[0][:2] for call in mock_run_cmd.call_args_list]
-    assert [c[0] for c in cmds][:3] == ["git", "git", "git"]
+    assert [c[0] for c in cmds][:2] == ["git", "git"]
 
-@patch('src.builder.git_ops.run_command')
-def test_checkout_tag_missing(mock_run_cmd, tmp_path):
-    mock_run_cmd.side_effect = ["", ""]  # fetch ok, tag not found
+@patch('src.builder.git_ops.get_esp_miner_stable_tags')
+@patch('src.builder.git_ops.verify_tag_exists')
+def test_checkout_tag_missing(mock_verify_tag, mock_get_stable_tags, tmp_path):
+    # Mock verify_tag_exists to return False
+    mock_verify_tag.return_value = False
+    # Mock get_esp_miner_stable_tags to return some tags
+    mock_get_stable_tags.return_value = ["v2.7.0", "v2.6.0"]
+
     commit = git_mod.checkout_tag(tmp_path, "v9.9.9")
     assert commit is None
+    # Verify that verify_tag_exists was called
+    mock_verify_tag.assert_called_once_with(tmp_path, "v9.9.9")
+    # Verify that get_esp_miner_stable_tags was called
+    mock_get_stable_tags.assert_called_once_with(tmp_path)
 
 # ----------------------
 # fetch_repo
@@ -55,12 +67,14 @@ def test_checkout_tag_missing(mock_run_cmd, tmp_path):
 @patch('src.builder.git_ops.run_command')
 def test_fetch_repo_clone_when_missing(mock_run_cmd, mock_get_env_dir, tmp_path):
     mock_get_env_dir.return_value = tmp_path
-    repo_dir = git_mod.fetch_repo("https://example.com/repo.git", "Repo")
+    repo_dir, is_custom_repo, repo_url = git_mod.fetch_repo("https://example.com/repo.git", "Repo")
     # Since directory absent, first command should be git clone
     first_cmd = mock_run_cmd.call_args_list[0].args[0]
     assert first_cmd[:2] == ["git", "clone"]
     expected_path = tmp_path / 'repos' / 'Repo'
     assert repo_dir == expected_path
+    assert is_custom_repo is False
+    assert repo_url == "https://example.com/repo.git"
 
 # ----------------------
 # ensure_clean_repo_for_build
@@ -72,4 +86,4 @@ def test_ensure_clean_repo_success(mock_run_cmd, tmp_path):
     # Provide .git directory to simulate repo
     (tmp_path / '.git').mkdir()
     ok = git_mod.ensure_clean_repo_for_build(tmp_path)
-    assert ok is True 
+    assert ok is True

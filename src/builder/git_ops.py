@@ -24,16 +24,39 @@ MAX_STABLE_TAGS_TO_SHOW = 5
 
 # --- Functions moved from main script ---
 
-def fetch_repo(repo_url_default: str, repo_name: str) -> Path:
-    """Clones or updates a Git repository. Allows override via environment variable."""
+def fetch_repo(repo_url_default: str, repo_name: str) -> tuple[Path, bool, str]:
+    """
+    Clones or updates a Git repository. Allows override via environment variable.
+
+    Returns:
+        tuple: (repo_path, is_custom_repo, repo_url)
+            - repo_path: Path to the repository
+            - is_custom_repo: True if using a custom repository URL
+            - repo_url: The actual repository URL used
+    """
     repo_url_override = os.environ.get("NOMADBUILD_ESP_MINER_REPO_URL")
+    logger.debug(f"fetch_repo: repo_url_override={repo_url_override}, repo_url_default={repo_url_default}")
+
     repo_url = repo_url_override if repo_url_override else repo_url_default
-    
-    if repo_url != repo_url_default:
-        logger.info(f"Using overridden repository URL from environment: {repo_url}")
+    is_custom_repo = repo_url != repo_url_default
+
+    logger.debug(f"fetch_repo: final repo_url={repo_url}, is_custom_repo={is_custom_repo}")
+
+    if is_custom_repo:
+        # Make the warning very visible with ASCII art and print directly to stdout
+        # to ensure it's always visible regardless of log level
+        print("\033[33m" + "="*80 + "\033[0m")
+        print("\033[33m⚠️  USING CUSTOM ESP-MINER REPOSITORY URL FROM ENVIRONMENT VARIABLE\033[0m")
+        print(f"\033[33m⚠️  URL: {repo_url}\033[0m")
+        print("\033[33m⚠️  This is an advanced feature and may affect reproducibility\033[0m")
+        print("\033[33m" + "="*80 + "\033[0m")
+        # Also log it for the log file
+        logger.warning("USING CUSTOM ESP-MINER REPOSITORY URL FROM ENVIRONMENT VARIABLE")
+        logger.warning(f"URL: {repo_url}")
+        logger.warning("This is an advanced feature and may affect reproducibility")
     else:
         logger.info(f"Using default repository URL: {repo_url}")
-            
+
     logger.info(f"--- Preparing Source Code Repository via Git Clone: {repo_name} --- ")
     env_dir = get_env_dir()
     repo_base_dir = env_dir / "repos"
@@ -55,27 +78,130 @@ def fetch_repo(repo_url_default: str, repo_name: str) -> Path:
         except Exception as e:
              logger.error(f"Git fetch failed for {target_repo_path}: {e}. Build might use stale data.")
 
-    return target_repo_path
+    return target_repo_path, is_custom_repo, repo_url
+
+def verify_tag_exists(repo_path: Path, tag: str) -> bool:
+    """
+    Verifies if a tag exists in the repository.
+
+    Args:
+        repo_path: Path to the repository
+        tag: The tag to verify
+
+    Returns:
+        bool: True if the tag exists, False otherwise
+    """
+    logger.debug(f"[GIT] Verifying if tag '{tag}' exists...")
+
+    # First, try to fetch the latest tags to ensure we have the most up-to-date information
+    try:
+        run_command(["git", "fetch", "--tags", "--force"], cwd=repo_path)
+        logger.debug(f"[GIT] Successfully fetched tags from remote")
+    except Exception as e:
+        logger.warning(f"[GIT] Failed to fetch tags from remote: {e}")
+        logger.warning("[GIT] Will check for tag existence using local repository state only")
+
+    # Check if the tag exists locally
+    try:
+        tag_output = run_command(["git", "tag", "-l", tag], cwd=repo_path, capture_output=True)
+        if tag_output and tag in tag_output.splitlines():
+            logger.debug(f"[GIT] Tag '{tag}' exists locally")
+            return True
+    except Exception as e:
+        logger.warning(f"[GIT] Error checking local tag existence: {e}")
+
+    # If not found locally, check if it exists in the remote
+    try:
+        # Use ls-remote to check if the tag exists in the remote repository
+        remote_output = run_command(["git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"],
+                                   cwd=repo_path, capture_output=True)
+        if remote_output and f"refs/tags/{tag}" in remote_output:
+            logger.debug(f"[GIT] Tag '{tag}' exists in remote but not locally")
+            return True
+    except Exception as e:
+        logger.warning(f"[GIT] Error checking remote tag existence: {e}")
+
+    logger.debug(f"[GIT] Tag '{tag}' does not exist in local or remote repository")
+    return False
 
 def get_esp_miner_stable_tags(repo_path: Path) -> list[str]:
+    """
+    Gets a list of stable tags from the ESP-Miner repository.
+
+    Args:
+        repo_path: Path to the repository
+
+    Returns:
+        list[str]: List of stable tags
+    """
     logger.info(f"[GIT] Fetching tags from {repo_path}...")
-    run_command(["git", "fetch", "--tags", "--force"], cwd=repo_path)
+
+    # Fetch tags first to ensure we have the latest
+    try:
+        run_command(["git", "fetch", "--tags", "--force"], cwd=repo_path)
+    except Exception as e:
+        logger.warning(f"[GIT] Failed to fetch tags from remote: {e}")
+
+    # Get all tags
     logger.debug("[GIT] Getting available tags...")
     tag_output = run_command(["git", "tag", "-l"], cwd=repo_path, capture_output=True)
-    all_tags = tag_output.splitlines() if tag_output else []
+
+    # Ensure proper splitting of tag output into individual tags
+    all_tags = []
+    if tag_output:
+        # Split by newlines and filter out empty strings
+        all_tags = [tag.strip() for tag in tag_output.splitlines() if tag.strip()]
+        logger.debug(f"[GIT] Found {len(all_tags)} tags in total")
+
+    # Filter for stable tags (vX.Y.Z format)
     stable_tag_pattern = re.compile(r"^v\d+\.\d+\.\d+$")
     stable_tags = sorted([tag for tag in all_tags if stable_tag_pattern.match(tag)], reverse=True)
+    logger.debug(f"[GIT] Found {len(stable_tags)} stable tags matching pattern")
+
+    # Limit the number of tags to show
     limited_tags = stable_tags[:MAX_STABLE_TAGS_TO_SHOW]
+
     logger.info(f"[GIT] Found latest {len(limited_tags)} stable tags (of {len(stable_tags)} total stable): {limited_tags}")
-    if not limited_tags: logger.warning("[GIT] No stable release tags found matching pattern vX.Y.Z")
+    if not limited_tags:
+        logger.warning("[GIT] No stable release tags found matching pattern vX.Y.Z")
+
     return limited_tags
 
 def checkout_tag(repo_path: Path, tag: str, progress_callback: Callable[[int, str], None] | None = None) -> str | None:
-    """Checks out a specific git tag and returns the commit hash."""
+    """
+    Checks out a specific git tag and returns the commit hash.
+
+    Args:
+        repo_path: Path to the repository
+        tag: The tag to checkout
+        progress_callback: Optional callback function to report progress
+
+    Returns:
+        str | None: The commit hash if successful, None otherwise
+    """
     logger.info(f"[GIT] Checking out tag '{tag}' in {repo_path}...")
+
+    # Validate tag parameter
     if not tag:
         logger.error("[GIT] Cannot checkout: Tag is empty.")
+        if progress_callback: progress_callback(5, "Error: Tag is empty.")
         return None
+
+    # Verify tag exists before attempting checkout
+    if not verify_tag_exists(repo_path, tag):
+        # Get available tags to suggest alternatives
+        stable_tags = get_esp_miner_stable_tags(repo_path)
+
+        # Construct error message with suggestions
+        error_msg = f"Tag '{tag}' does not exist in the repository."
+        if stable_tags:
+            suggestions = ", ".join(stable_tags[:5])
+            error_msg += f" Available stable tags include: {suggestions}"
+
+        logger.error(f"[GIT] {error_msg}")
+        if progress_callback: progress_callback(5, f"Error: {error_msg}")
+        return None
+
     try:
         # Fetch tags first to ensure we have the latest, handle potential interruptions
         fetch_cmd = ["git", "fetch", "--tags", "--force"]
@@ -83,15 +209,6 @@ def checkout_tag(repo_path: Path, tag: str, progress_callback: Callable[[int, st
         run_command(fetch_cmd, cwd=repo_path, check=True) # Use check=True to raise on error
         logger.info("[GIT] Fetched tags.")
         if progress_callback: progress_callback(7, "Fetched latest tags.")
-        
-        # Check if the tag exists locally now
-        check_tag_cmd = ["git", "tag", "-l", tag]
-        logger.debug(f"[GIT] Executing: {' '.join(check_tag_cmd)}")
-        tag_exists_output = run_command(check_tag_cmd, cwd=repo_path, capture_output=True)
-        if not tag_exists_output or tag not in tag_exists_output.split():
-             logger.error(f"[GIT] Tag '{tag}' not found in repository after fetch.")
-             if progress_callback: progress_callback(7, f"Error: Tag '{tag}' not found.")
-             return None
 
         # Checkout the specific tag
         checkout_cmd = ["git", "checkout", f"tags/{tag}"]
@@ -104,7 +221,7 @@ def checkout_tag(repo_path: Path, tag: str, progress_callback: Callable[[int, st
         hash_cmd = ["git", "rev-parse", "HEAD"]
         logger.debug(f"[GIT] Executing: {' '.join(hash_cmd)}")
         commit_hash = run_command(hash_cmd, cwd=repo_path, capture_output=True)
-        
+
         if commit_hash:
             commit_hash = commit_hash.strip() # Ensure no extra whitespace
             logger.info(f"[GIT] Current HEAD commit hash: {commit_hash}")
@@ -211,4 +328,4 @@ def ensure_clean_repo_for_build(repo_path: Path | None = None, force_deep_clean=
 
     except Exception as e:
         logger.exception(f"Error during repository cleanup: {e}")
-        return False 
+        return False

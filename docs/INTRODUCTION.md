@@ -20,7 +20,7 @@ The principle of self-sovereignty, applied here, means **you** should have the u
 
 When you build it yourself:
 
-1.  **You verify the source:** You start with the known, audited open-source code from the official repository (e.g., a specific release tag like `v2.6.3`).
+1.  **You verify the source:** You start with the known, audited open-source code from the official repository (e.g., a specific release tag like `v2.7.0`).
 2.  **You control the environment:** You determine the tools and processes used for compilation.
 3.  **You own the result:** The resulting binary is generated on your terms, minimizing reliance on external build infrastructure trust.
 
@@ -32,10 +32,10 @@ Building embedded firmware like ESP-Miner isn't always straightforward. It requi
 
 This is precisely the problem the **NomadBuild** tool aims to solve. It automates the complex build process within a controlled, standardized environment using Docker.
 
-*   **Consistent Environment:** It uses the official Espressif Docker image (`espressif/idf:v5.4`), ensuring the correct toolchain and dependencies are always used, regardless of your host operating system.
+*   **Consistent Environment:** It uses the official Espressif Docker image (`espressif/idf:v5.4.1`), ensuring the correct toolchain and dependencies are always used, regardless of your host operating system.
 *   **Source Code Integrity:** It fetches the specified official release tag directly from the `bitaxeorg/ESP-Miner` repository.
 *   **Automation:** It handles the intricate steps of checkout, version setting, cleaning, building, analyzing artifacts, and optionally flashing – turning a complex manual process into a single command.
-*   **Clear Identification:** The script modifies the web interface source code before building to add a notice indicating the firmware is a self-build, helping users distinguish it from official releases and directing support appropriately.
+*   **Clear Identification:** The firmware includes a "-sovereign" suffix in the version string, helping users distinguish self-built firmware from official releases.
 *   **Trust, Simplified:** By automating the build from official source in a standard environment, it drastically lowers the barrier to self-sovereign building, making trust achievable for more users.
 
 **The Road Ahead: Reproducible Builds**
@@ -48,4 +48,4 @@ Our NomadBuild, by using Docker and specific Git tags, creates a highly consiste
 
 **Conclusion**
 
-The NomadBuild empowers you to move beyond simply trusting pre-compiled firmware. It provides a practical path to self-sovereign building, putting you in control of the code running on your open-source hardware. While we work towards the goal of fully reproducible builds, the current tool offers a massive leap in trust and verification compared to downloading opaque binaries. Take control, build your own firmware, and participate fully in the open-source promise of Bitaxe. 
+The NomadBuild empowers you to move beyond simply trusting pre-compiled firmware. It provides a practical path to self-sovereign building, putting you in control of the code running on your open-source hardware. While we work towards the goal of fully reproducible builds, the current tool offers a massive leap in trust and verification compared to downloading opaque binaries. Take control, build your own firmware, and participate fully in the open-source promise of Bitaxe.

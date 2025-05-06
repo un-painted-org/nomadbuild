@@ -33,13 +33,15 @@ logger = logging.getLogger() # <-- Get root logger
 
 # --- Functions moved/adapted from main script ---
 
-def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None, str | None]:
+def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None, str | None, bool | None, str | None]:
     """Handles logic to either perform a build or use existing artifacts based on args."""
     logger.info("--- Determining Build Action --- ")
     build_info_path = CONTAINER_OUTPUT_DIR / BUILD_INFO_FILE
     selected_tag = args.tag
     expected_version = None
     miner_repo_path = None
+    is_custom_repo = False
+    custom_repo_url = None
     perform_build = False
 
     # Determine if a build needs to be performed
@@ -74,7 +76,12 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
     if perform_build:
         logger.info("--- Build Process Required --- ")
         logger.info("Fetching Source Code...")
-        miner_repo_path = builder_git.fetch_repo(ESP_MINER_REPO, "ESP-Miner")
+        miner_repo_path, is_custom_repo, custom_repo_url = builder_git.fetch_repo(ESP_MINER_REPO, "ESP-Miner")
+        logger.debug(f"fetch_repo returned: is_custom_repo={is_custom_repo}, custom_repo_url={custom_repo_url}")
+
+        # Print the environment variable for debugging
+        env_var = os.environ.get("NOMADBUILD_ESP_MINER_REPO_URL")
+        logger.debug(f"NOMADBUILD_ESP_MINER_REPO_URL environment variable: {env_var}")
 
         if not selected_tag:
             logger.info("Determining latest stable tag...")
@@ -85,7 +92,22 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
             selected_tag = stable_tags[0]
             logger.info(f"Building latest stable tag: {selected_tag}")
         else:
-            logger.info(f"Building specified tag: {selected_tag}")
+            logger.info(f"Verifying specified tag: {selected_tag}")
+            # Verify that the specified tag exists before attempting to build
+            if not builder_git.verify_tag_exists(miner_repo_path, selected_tag):
+                # Get available tags to suggest alternatives
+                stable_tags = builder_git.get_esp_miner_stable_tags(miner_repo_path)
+
+                # Construct error message with suggestions
+                error_msg = f"Tag '{selected_tag}' does not exist in the repository."
+                if stable_tags:
+                    suggestions = ", ".join(stable_tags[:5])
+                    error_msg += f" Available stable tags include: {suggestions}"
+
+                logger.critical(f"Build failed: {error_msg}")
+                sys.exit(f"Build failed: {error_msg}")
+
+            logger.info(f"Tag '{selected_tag}' verified. Proceeding with build.")
 
         logger.info("Cleaning repository before build...")
         # Ensure clean state for the build
@@ -96,7 +118,8 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
 
         logger.info("\n--- Starting Build Phase --- ")
         # build_esp_miner now returns: (build_dir, commit_hash, partition_csv_path, flasher_args_path, expected_version)
-        build_dir, commit_hash, partition_csv_path, flasher_args_path, expected_version = build_esp_miner(miner_repo_path, selected_tag, args.verbose_build)
+        verbose_build = getattr(args, 'verbose_build', False)  # Default to False if attribute doesn't exist
+        build_dir, commit_hash, partition_csv_path, flasher_args_path, expected_version = build_esp_miner(miner_repo_path, selected_tag, verbose_build)
 
         # Check if build was cancelled (indicated by None return values)
         if build_dir is None: # Check the first element which should be Path or None
@@ -125,12 +148,22 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
             sys.exit("Build artifact copying failed.")
 
         logger.info("Creating build information file...")
-        build_info = create_and_save_build_info(
-            copied_artifact_paths=copied_artifact_paths,
-            built_tag=selected_tag,
-            expected_version=expected_version,
-            output_dir=CONTAINER_OUTPUT_DIR
-        )
+        logger.debug(f"Calling create_and_save_build_info with is_custom_repo={is_custom_repo}, custom_repo_url={custom_repo_url}")
+        try:
+            build_info = create_and_save_build_info(
+                copied_artifact_paths=copied_artifact_paths,
+                built_tag=selected_tag,
+                expected_version=expected_version,
+                output_dir=CONTAINER_OUTPUT_DIR,
+                is_custom_repo=is_custom_repo,
+                custom_repo_url=custom_repo_url
+            )
+        except ValueError as e:
+            logger.critical(f"Failed to create build information file: {e}")
+            sys.exit(f"Build failed: {e}")
+        except Exception as e:
+            logger.critical(f"Unexpected error creating build information file: {e}")
+            sys.exit(f"Build failed due to unexpected error: {e}")
         if not build_info:
             logger.error("Failed to create or save build information.")
             sys.exit("Build information creation failed.")
@@ -151,7 +184,7 @@ def _handle_build_or_use_existing(args: argparse.Namespace) -> tuple[str | None,
         # After fallback logic, we must have determined the build target
         logger.critical(f"Internal logic error: Could not determine selected tag ({selected_tag}) or expected version ({expected_version}). Aborting.")
         sys.exit("Failed to establish build target due to internal logic error.")
-    return selected_tag, expected_version
+    return selected_tag, expected_version, is_custom_repo, custom_repo_url
 
 def _parse_arguments():
     """Parses command line arguments."""
@@ -160,6 +193,7 @@ def _parse_arguments():
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress INFO messages in console output")
     parser.add_argument("--log-level", default="DEBUG", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Set file logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     parser.add_argument("--force-rebuild", action="store_true", help="Force rebuild even if artifacts exist")
+
 
     # Create a mutually exclusive group for flash targets
     flash_group = parser.add_mutually_exclusive_group()
@@ -252,7 +286,7 @@ def _handle_reproducibility_check(args: argparse.Namespace):
 
 
 
-def _display_build_summary(selected_tag, expected_version, args):
+def _display_build_summary(selected_tag, expected_version, args, is_custom_repo=False, custom_repo_url=None):
     """Displays a user-friendly summary of the build results."""
     from .color_formatter import Colors
 
@@ -282,6 +316,13 @@ def _display_build_summary(selected_tag, expected_version, args):
     if expected_version:
         print(f"{Colors.BOLD}Version:{Colors.RESET}       {Colors.BRIGHT_CYAN}{expected_version}{Colors.RESET}")
 
+    # Display warning if using a custom repository
+    if is_custom_repo and custom_repo_url:
+        print("")
+        print(f"{Colors.BRIGHT_YELLOW}⚠️  CUSTOM REPOSITORY WARNING{Colors.RESET}")
+        print(f"{Colors.BRIGHT_YELLOW}   Using custom ESP-Miner repository: {custom_repo_url}{Colors.RESET}")
+        print(f"{Colors.BRIGHT_YELLOW}   This is an advanced feature and may affect reproducibility{Colors.RESET}")
+
     # Files information
     if build_info and 'files' in build_info:
         print(f"\n{Colors.BOLD}Build Artifacts:{Colors.RESET}")
@@ -299,6 +340,8 @@ def _display_flash_summary(selected_tag, expected_version, args):
     # This function is intentionally empty to prevent displaying a summary after flashing
     pass
 
+
+
 def main():
     """Main entry point for the CLI application."""
     args = _parse_arguments()
@@ -312,18 +355,21 @@ def main():
     load_models_config()
     setup_environment()
 
+
+
     # Handle reproducibility commands
     if args.repro:
         _handle_reproducibility_check(args)
         return
 
     # Normal build and flash flow
-    selected_tag, expected_version = _handle_build_or_use_existing(args)
+    selected_tag, expected_version, is_custom_repo, custom_repo_url = _handle_build_or_use_existing(args)
 
     # Display a user-friendly build summary before flashing
-    _display_build_summary(selected_tag, expected_version, args)
+    _display_build_summary(selected_tag, expected_version, args, is_custom_repo, custom_repo_url)
 
     # Pass necessary args to _handle_flashing (from device.py)
+    # Note: _handle_flashing doesn't need the custom repo info
     _handle_flashing(args, selected_tag, expected_version)
 
 if __name__ == "__main__":
