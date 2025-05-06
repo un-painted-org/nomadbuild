@@ -2,7 +2,7 @@
 
 All notable changes to the NomadBuild project will be documented in this file.
 
-## [v0.9.6] - 2025-01-01
+## [v0.9.6] - 2025-05-06
 
 ### Fixed
 - Fixed git tag verification in web UI to properly handle tag output format
@@ -19,7 +19,7 @@ All notable changes to the NomadBuild project will be documented in this file.
 - Updated help text with new tagline and simplified options
 - Updated documentation for CSV-based flashing
 
-## [v0.9.5] - 2024-12-31
+## [v0.9.5] - 2025-05-05
 
 ### Added
 - Implemented CSV-based multi-device flashing with `--flash-csv` parameter
@@ -33,7 +33,7 @@ All notable changes to the NomadBuild project will be documented in this file.
 - Enhanced CSV file handling by copying file into container instead of mounting
 - Fixed order of build and flash summaries to show build summary first
 
-## [v0.9.4] - 2024-12-30
+## [v0.9.4] - 2025-04-30
 
 ### Added
 - Implemented `--build-image clean` parameter to clean firmware files and rebuild Docker image
@@ -51,7 +51,7 @@ All notable changes to the NomadBuild project will be documented in this file.
 - Fixed `--build-image clean` to not show build summary
 - Added helpful message about preserved firmware when using `--build-image clean`
 
-## [v0.9.3] - 2024-12-29
+## [v0.9.3] - 2025-04-30
 
 ### Added
 - Implemented multi-stage Docker builds for better performance and smaller image size
