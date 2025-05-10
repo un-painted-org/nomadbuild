@@ -154,7 +154,7 @@ def get_esp_miner_stable_tags(repo_path: Path) -> list[str]:
         logger.debug(f"[GIT] Found {len(all_tags)} tags in total")
 
     # Filter for stable tags (vX.Y.Z format)
-    stable_tag_pattern = re.compile(r"^v\d+\.\d+\.\d+$")
+    stable_tag_pattern = re.compile(r"^v\d+\.\d+\.\d+(-LV07)*$")
     stable_tags = sorted([tag for tag in all_tags if stable_tag_pattern.match(tag)], reverse=True)
     logger.debug(f"[GIT] Found {len(stable_tags)} stable tags matching pattern")
 
