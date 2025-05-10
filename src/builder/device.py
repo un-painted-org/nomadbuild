@@ -107,6 +107,8 @@ def get_identified_model(device_info: dict) -> str:
             return "Bitaxe Max"
         if board_version_str == "0.11" or board_version_str.startswith("20"):
             return "Bitaxe Ultra"
+        if board_version_str.startswith("30"):
+            return "Bitaxe Hex or Lucky Miner LV07"
         if board_version_str.startswith("40"):
             return "Bitaxe Supra"
         if board_version_str.startswith("70"):
