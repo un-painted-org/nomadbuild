@@ -1,3 +1,12 @@
+# LV07 by unpainted
+
+get latest releases from un-painted-org repository:
+```bash
+NOMADBUILD_ESP_MINER_REPO_URL="https://github.com/un-painted-org/ESP-Miner.git" ./nomadbuild.sh --webui
+```
+
+***
+
 # NomadBuild
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-green) MIT © 2025 marsmensch
